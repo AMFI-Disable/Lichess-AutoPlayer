@@ -9,7 +9,7 @@
 // @grant        GM_getValue
 // @run-at       document-idle
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
-// @require      https://cdn.jsdelivr.net/npm/stockfish@0.3.6/src/stockfish.js
+// @require      https://cdn.jsdelivr.net/npm/stockfish@10.0.0/src/stockfish.js
 // ==/UserScript==
 
 (function () {
@@ -37,19 +37,19 @@
     updateUIStatus('Initializing Engine...', '#ff9800');
 
     try {
-      if (typeof window.STOCKFISH === 'function') {
-        state.engine = window.STOCKFISH();
-      } else if (typeof Stockfish === 'function') {
-        state.engine = Stockfish();
+      const stockfishFactory = typeof window.STOCKFISH === 'function'
+        ? window.STOCKFISH
+        : typeof STOCKFISH === 'function'
+          ? STOCKFISH
+          : null;
+
+      if (!stockfishFactory) {
+        throw new Error('Stockfish @require did not expose STOCKFISH');
       }
 
-      if (!state.engine) {
-        // Fallback: Inline Worker Worker instantiation
-        const workerBlob = new Blob([
-          `importScripts('https://cdn.jsdelivr.net/npm/stockfish@0.3.6/src/stockfish.js');`
-        ], { type: 'application/javascript' });
-        state.engine = new Worker(URL.createObjectURL(workerBlob));
-      }
+      // The engine is supplied by Tampermonkey's @require sandbox. Do not
+      // create a page Blob/importScripts fallback: Lichess CSP blocks it.
+      state.engine = stockfishFactory();
 
       state.engine.onmessage = function (event) {
         const line = typeof event === 'string' ? event : (event.data || '');
@@ -113,6 +113,8 @@
   function executeMoveOnBoard(from, to, promotion) {
     const board = document.querySelector('cg-board');
     if (!board) return false;
+    if (!/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) return false;
+    if (promotion && !/^[qrbn]$/i.test(promotion)) return false;
 
     const wrap = board.closest('.cg-wrap, cg-container') || board.parentElement;
     const isFlipped = Boolean(wrap?.classList?.contains('orientation-black')) ||
@@ -149,13 +151,15 @@
         pointerType: 'mouse',
         isPrimary: true
       };
+      const hitTarget = document.elementFromPoint(position.x, position.y);
+      const target = hitTarget && board.contains(hitTarget) ? hitTarget : board;
 
       // Lichess Chessground uses mousedown/mouseup. PointerEvent is retained
       // for compatible Chessground builds, but never replaces mouse input.
       if (typeof window.PointerEvent === 'function') {
-        board.dispatchEvent(new window.PointerEvent(`pointer${isDown ? 'down' : 'up'}`, options));
+        target.dispatchEvent(new window.PointerEvent(`pointer${isDown ? 'down' : 'up'}`, options));
       }
-      board.dispatchEvent(new window.MouseEvent(type, options));
+      target.dispatchEvent(new window.MouseEvent(type, options));
     }
 
     function dispatchSquareClick(position) {
