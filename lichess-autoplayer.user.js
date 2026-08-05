@@ -105,68 +105,119 @@
     }, delay);
   }
 
-  // Robust Pointer Event Dispatching for Chessground
+  // Dispatch a move through Chessground's public DOM input surface. Lichess
+  // currently handles mouse events, while some Chessground builds handle
+  // pointer events, so emit both when PointerEvent is available and retain a
+  // MouseEvent-only fallback. The event options intentionally include the
+  // complete primary-button state required by both implementations.
   function executeMoveOnBoard(from, to, promotion) {
     const board = document.querySelector('cg-board');
-    if (!board) return;
+    if (!board) return false;
 
-    const wrap = document.querySelector('.cg-wrap, cg-container');
-    const isFlipped = wrap?.classList?.contains('orientation-black') ||
-                      document.querySelector('coords.files')?.classList.contains('black');
+    const wrap = board.closest('.cg-wrap, cg-container') || board.parentElement;
+    const isFlipped = Boolean(wrap?.classList?.contains('orientation-black')) ||
+      Boolean(board.closest('.orientation-black'));
+    const rect = board.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
 
     function getSquareCoords(square) {
-      const file = square.charCodeAt(0) - 97; // a=0, h=7
-      const rank = parseInt(square[1], 10) - 1; // 1=0, 8=7
-
-      const fileIdx = isFlipped ? 7 - file : file;
-      const rankIdx = isFlipped ? rank : 7 - rank;
-
-      const rect = board.getBoundingClientRect();
-      const sqWidth = rect.width / 8;
+      const file = square.charCodeAt(0) - 97;
+      const rank = Number(square[1]) - 1;
+      const fileIndex = isFlipped ? 7 - file : file;
+      const rankIndex = isFlipped ? rank : 7 - rank;
+      const squareWidth = rect.width / 8;
+      const squareHeight = rect.height / 8;
 
       return {
-        x: rect.left + fileIdx * sqWidth + sqWidth / 2,
-        y: rect.top + rankIdx * sqWidth + sqWidth / 2
+        x: rect.left + (fileIndex + 0.5) * squareWidth,
+        y: rect.top + (rankIndex + 0.5) * squareHeight
       };
     }
 
-    const fromPos = getSquareCoords(from);
-    const toPos = getSquareCoords(to);
-
-    function triggerPointerEvent(type, x, y) {
-      const evt = new PointerEvent(type, {
+    function dispatchBoardInput(type, position) {
+      const isDown = type.endsWith('down');
+      const options = {
         bubbles: true,
         cancelable: true,
         composed: true,
         view: window,
-        clientX: x,
-        clientY: y,
+        clientX: position.x,
+        clientY: position.y,
         button: 0,
         buttons: 1,
         pointerId: 1,
         pointerType: 'mouse',
         isPrimary: true
-      });
-      board.dispatchEvent(evt);
+      };
+
+      // Lichess Chessground uses mousedown/mouseup. PointerEvent is retained
+      // for compatible Chessground builds, but never replaces mouse input.
+      if (typeof window.PointerEvent === 'function') {
+        board.dispatchEvent(new window.PointerEvent(`pointer${isDown ? 'down' : 'up'}`, options));
+      }
+      board.dispatchEvent(new window.MouseEvent(type, options));
     }
 
-    // Click source square
-    triggerPointerEvent('pointerdown', fromPos.x, fromPos.y);
-    triggerPointerEvent('pointerup', fromPos.x, fromPos.y);
+    function dispatchSquareClick(position) {
+      dispatchBoardInput('mousedown', position);
+      dispatchBoardInput('mouseup', position);
+    }
 
-    // Click destination square
-    setTimeout(() => {
-      triggerPointerEvent('pointerdown', toPos.x, toPos.y);
-      triggerPointerEvent('pointerup', toPos.x, toPos.y);
+    function isVisible(element) {
+      const style = window.getComputedStyle(element);
+      const elementRect = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' &&
+        elementRect.width > 0 && elementRect.height > 0;
+    }
 
-      // Handle promotion modal
-      if (promotion) {
-        setTimeout(() => {
-          const promoOption = document.querySelector(`promotion-choice piece.${promotion}, #promotion-choice piece.${promotion}`);
-          if (promoOption) promoOption.click();
-        }, 150);
+    function choosePromotionPiece(piece) {
+      const pieceNames = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' };
+      const name = pieceNames[piece.toLowerCase()];
+      if (!name) return false;
+
+      const choices = Array.from(document.querySelectorAll(
+        '.promotion-choice, #promotion-choice, [role="dialog"]'
+      )).filter(isVisible);
+      const roots = choices.length ? choices : [document];
+      const selectors = [
+        `piece.${name}`,
+        `piece.${piece.toLowerCase()}`,
+        `[data-piece="${name}"]`,
+        `[data-piece="${piece.toLowerCase()}"]`,
+        `button.${name}`,
+        `button.${piece.toLowerCase()}`
+      ];
+
+      for (const root of roots) {
+        const option = selectors
+          .map(selector => root.matches?.(selector) ? root : root.querySelector(selector))
+          .find(Boolean);
+        if (!option || !isVisible(option)) continue;
+        option.click();
+        return true;
       }
+      return false;
+    }
+
+    const fromPosition = getSquareCoords(from);
+    const toPosition = getSquareCoords(to);
+    dispatchSquareClick(fromPosition);
+
+    // Allow Chessground to render the selected state before the destination
+    // click. Promotion choices are rendered only after that destination click.
+    window.setTimeout(() => {
+      dispatchSquareClick(toPosition);
+      if (!promotion) return;
+
+      const startedAt = Date.now();
+      const selectPromotion = () => {
+        if (choosePromotionPiece(promotion) || Date.now() - startedAt >= 1000) return;
+        window.requestAnimationFrame(selectPromotion);
+      };
+      window.requestAnimationFrame(selectPromotion);
     }, 120);
+
+    return true;
   }
 
   // Parse moves from DOM and convert SAN moves to UCI moves using chess.js
