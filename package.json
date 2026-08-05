@@ -1,0 +1,21 @@
+{
+  "name": "lichess-autoplayer",
+  "version": "1.0.0",
+  "description": "Local Stockfish Engine Bridge and AutoPlayer for macOS Lichess Bot Accounts",
+  "main": "server/engine-bridge.js",
+  "scripts": {
+    "start": "node server/engine-bridge.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "keywords": [
+    "lichess",
+    "chess",
+    "autoplayer",
+    "stockfish",
+    "bot"
+  ],
+  "author": "",
+  "license": "GPL-3.0"
+}
