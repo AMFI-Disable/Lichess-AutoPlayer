@@ -7,9 +7,11 @@
 // @match        *://lichess.org/*
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_xmlhttpRequest
+// @connect      cdnjs.cloudflare.com
+// @connect      cdn.jsdelivr.net
 // @run-at       document-idle
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
-// @require      https://cdn.jsdelivr.net/npm/stockfish@10.0.0/src/stockfish.js
 // ==/UserScript==
 
 (function () {
@@ -32,42 +34,73 @@
     engine: null
   };
 
-  // 100% In-Browser Engine Initialization (No NPM / No Terminal)
+  // 100% Standalone In-Browser Engine (bypasses CSP via GM_xmlhttpRequest + inline Data URI Worker)
   function initEngine() {
     updateUIStatus('Initializing Engine...', '#ff9800');
 
-    try {
-      const stockfishFactory = typeof window.STOCKFISH === 'function'
-        ? window.STOCKFISH
-        : typeof STOCKFISH === 'function'
-          ? STOCKFISH
-          : null;
-
-      if (!stockfishFactory) {
-        throw new Error('Stockfish @require did not expose STOCKFISH');
-      }
-
-      // The engine is supplied by Tampermonkey's @require sandbox. Do not
-      // create a page Blob/importScripts fallback: Lichess CSP blocks it.
-      state.engine = stockfishFactory();
+    function setupEngineInstance(engineWorker) {
+      state.engine = engineWorker;
 
       state.engine.onmessage = function (event) {
-        const line = typeof event === 'string' ? event : (event.data || '');
-        if (line.includes('readyok')) {
-          state.engineReady = true;
-          updateUIStatus('Engine Ready', '#4caf50');
-        } else if (line.includes('bestmove')) {
-          handleBestMoveOutput(line);
+        const line = typeof event === 'string' ? event : (event.data || event);
+        const str = typeof line === 'string' ? line : (line.data || '');
+
+        if (str.includes('readyok') || str.includes('uciok') || str.includes('Stockfish')) {
+          if (!state.engineReady) {
+            state.engineReady = true;
+            updateUIStatus('Engine Ready', '#4caf50');
+          }
+        }
+        if (str.includes('bestmove')) {
+          handleBestMoveOutput(str);
         }
       };
 
       state.engine.postMessage('uci');
       configureEngineOptions();
       state.engine.postMessage('isready');
-    } catch (err) {
-      console.error('[AutoPlayer] Error starting internal browser Stockfish worker:', err);
-      updateUIStatus('Engine Load Failed', '#f44336');
     }
+
+    // Try direct factory function if exposed in GM sandbox
+    let sfFactory = null;
+    if (typeof window.STOCKFISH === 'function') sfFactory = window.STOCKFISH;
+    else if (typeof STOCKFISH === 'function') sfFactory = STOCKFISH;
+    else if (typeof window.Stockfish === 'function') sfFactory = window.Stockfish;
+    else if (typeof Stockfish === 'function') sfFactory = Stockfish;
+    else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.STOCKFISH === 'function') sfFactory = unsafeWindow.STOCKFISH;
+
+    if (sfFactory) {
+      setupEngineInstance(sfFactory());
+      return;
+    }
+
+    // Fetch Stockfish engine JS via GM_xmlhttpRequest to bypass Lichess CSP / CORS blocks
+    const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
+    GM_xmlhttpRequest({
+      method: 'GET',
+      url: stockfishUrl,
+      onload: function (response) {
+        try {
+          const sfCode = response.responseText;
+          const wrapperCode = `
+            ${sfCode}
+            var engine = (typeof STOCKFISH === 'function' ? STOCKFISH : Stockfish)();
+            engine.onmessage = function(e) { self.postMessage(e); };
+            self.onmessage = function(e) { engine.postMessage(e.data); };
+          `;
+          const blob = new Blob([wrapperCode], { type: 'application/javascript' });
+          const worker = new Worker(URL.createObjectURL(blob));
+          setupEngineInstance(worker);
+        } catch (err) {
+          console.error('[AutoPlayer] Error launching GM_xmlhttpRequest Stockfish worker:', err);
+          updateUIStatus('Engine Load Failed', '#f44336');
+        }
+      },
+      onerror: function (err) {
+        console.error('[AutoPlayer] GM_xmlhttpRequest fetch failed:', err);
+        updateUIStatus('Engine Download Failed', '#f44336');
+      }
+    });
   }
 
   function configureEngineOptions() {
@@ -316,7 +349,12 @@
       if (newOpponentBtn) {
         newOpponentBtn.click();
       } else {
-        const pairingBtn = document.querySelector(`a.button[data-act="${state.gameType}"]`);
+        // Trigger quick pairing preset (e.g., 1+0 Bullet, 3+0 Blitz)
+        const targetPerf = state.gameType;
+        const pairingBtn = Array.from(document.querySelectorAll('.clock, [data-act], .category button, .quick-pairing button')).find(btn => {
+          const txt = btn.innerText || btn.getAttribute('data-act') || '';
+          return txt.includes(targetPerf);
+        });
         if (pairingBtn) pairingBtn.click();
       }
       gameEndHandled = false;
