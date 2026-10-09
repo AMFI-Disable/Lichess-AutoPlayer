@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Lichess Pure AutoPlayer (Standalone Userscript)
+// @name         Lichess AutoPlayer
 // @namespace    https://github.com/amfi-disable/Lichess-AutoPlayer
 // @version      1.0.0
-// @description  100% Standalone in-browser chess bot. No NPM, no local server, no external bridge needed.
+// @description  Browser AutoPlayer for licensed Lichess Bot accounts.
 // @author       amfi-disable
 // @match        *://lichess.org/*
 // @grant        GM_setValue
@@ -34,7 +34,7 @@
     engine: null
   };
 
-  // 100% Standalone In-Browser Engine (bypasses CSP via GM_xmlhttpRequest + inline Data URI Worker)
+  // In-browser engine loader.
   function initEngine() {
     updateUIStatus('Initializing Engine...', '#ff9800');
 
@@ -439,7 +439,7 @@
       </div>
 
       <div style="font-size:11px; color:#888; text-align:center; margin-top:6px;">
-        100% Standalone Userscript
+        Lichess AutoPlayer
       </div>
     `;
 

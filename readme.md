@@ -1,4 +1,4 @@
-# Lichess AutoPlayer (Standalone Licensed Bot Edition)
+# Lichess AutoPlayer
 
 Automated move execution, move timing customization, move delay jittering, search depth/ELO scaling, rated match selection, and automatic "New Opponent" match seeking for **Lichess Bot Accounts**.
 
@@ -18,8 +18,8 @@ Automated move execution, move timing customization, move delay jittering, searc
 
 ## 🌟 Features
 
-- **100% Standalone (No Terminal or Node.js Required)**: Runs Stockfish directly in your browser via WebWorkers.
-- **Pure AutoPlayer Focus**: Automated move execution with zero visual hints or overlay arrows on the board.
+- **Browser-Based**: Runs Stockfish directly in your browser.
+- **Clean Board**: Executes moves without arrows or visual hint overlays.
 - **Interactive In-Page Control UI**:
   - **Rated Game Selection**: Easily choose Bullet (1+0), Blitz (3+0, 5+3), Rapid (10+0), etc.
   - **Move Timing Control**: Set your base move delay in milliseconds.
