@@ -1,4 +1,135 @@
-node_modules/
+# ==============================================================================
+# Lichess-AutoPlayer .gitignore
+# ==============================================================================
+# Controls file visibility and repository hygiene:
+# - Hides transient build artifacts, machine-specific caches, editor states, and secrets.
+# - Preserves active working files, configuration definitions, and userscript assets.
+# ==============================================================================
+
+# ==============================================================================
+# SECTION 1: WORKING & PRESERVED FILES (Explicit Whitelists)
+# (Guarantees vital project sources, configs, and assets are preserved)
+# ==============================================================================
+
+# Core Project Files & Engine Source
+!lichess-autoplayer.user.js
+!server/
+!package.json
+!package-lock.json
+!.gitignore
+!.markdownlint.json
+
+# Stockfish Source Tree & Documentation
+!stockfish/
+!stockfish/src/
+!stockfish/scripts/
+!stockfish/wiki/
+!stockfish/*.md
+!stockfish/*.txt
+!stockfish/*.cff
+
+# Documentation & Licensing
+!readme*.md
+!changelog.md
+!license
+
+# Submodules
+!a.c.a.s/
+
+# ==============================================================================
+# SECTION 2: HIDDEN & IGNORED ARTIFACTS
+# (Local caches, intermediate builds, user states, credentials, diagnostics)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 2.1 macOS System & Volume Metadata
+# ------------------------------------------------------------------------------
 .DS_Store
-*.log
+.DS_Store?
+.ds_store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+Icon?
+
+# ------------------------------------------------------------------------------
+# 2.2 Package Managers & Local Dependencies
+# ------------------------------------------------------------------------------
+node_modules/
+.npm/
+.yarn/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ------------------------------------------------------------------------------
+# 2.3 Compiled Chess Engine Binaries & Build Outputs
+# (Compiled executables must not be committed to git)
+# ------------------------------------------------------------------------------
 stockfish-macos-m1-apple-silicon
+stockfish/stockfish-macos-m1-apple-silicon
+stockfish/stockfish*
+!stockfish/src/
+!stockfish/scripts/
+!stockfish/wiki/
+!stockfish/*.md
+!stockfish/*.txt
+!stockfish/*.cff
+*.bin
+*.exe
+build/
+dist/
+*.o
+*.a
+*.dylib
+
+# ------------------------------------------------------------------------------
+# 2.4 Environment Secrets, Private Keys & Tokens
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.key
+*.pem
+*.token
+credentials.json
+token.json
+*secret*
+
+# ------------------------------------------------------------------------------
+# 2.5 Diagnostics, Logs & Telemetry
+# ------------------------------------------------------------------------------
+*.log
+logs/
+
+# ------------------------------------------------------------------------------
+# 2.6 IDEs, Text Editors & AI Agent Working Contexts
+# ------------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.gemini/
+.claude/
+.cursor/
+.windsurf/
+.codex/
+antigravity.json
+.nodeterm/
+
+# ------------------------------------------------------------------------------
+# 2.7 Temporary Files, Local Scratchpads & Local Internal Documents
+# ------------------------------------------------------------------------------
+*.tmp
+*.temp
+*.bak
+tmp/
+temp/
+scratch/
+task.md
+todo.md
+plan.md
+report.md
