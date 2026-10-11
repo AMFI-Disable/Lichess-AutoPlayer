@@ -40,7 +40,7 @@ Different versions of Stockfish will play at different nps, for example, if the 
 
 To measure the speed of several builds of Stockfish, use one of these applications:
 * All OS:
-  * [pyshbench](https://github.com/hazzl/pyshbench): Latest release [pyshbench](https://github.com/hazzl/pyshbench/archive/master.zip)
+  * [pyshbench](https://github.com/hazzl/pyshbench): Available on GitHub [pyshbench](https://github.com/hazzl/pyshbench)
   * bash script `bench_parallel.sh` (run `bash bench_parallel.sh` for the help)  
     it might be that you have to install gawk as well on your system to not get syntax errors.
 
@@ -157,12 +157,12 @@ To measure the speed of several builds of Stockfish, use one of these applicatio
   * [`speedtest`](UCI-&-Commands#speedtest) command
 
 * Windows only:
-  * [FishBench](https://github.com/zardav/FishBench): Latest release [Fishbench v6.0](https://github.com/zardav/FishBench/releases/download/v6.0/FishBench.zip)
-  * [Buildtester](http://software.farseer.org/): Latest release [Buildtester 1.4.7.0](http://software.farseer.org/Software/BuildTester.7z)
+  * [FishBench](https://github.com/zardav/FishBench): Latest release on GitHub [FishBench Releases](https://github.com/zardav/FishBench/releases)
+  * [Buildtester](http://software.farseer.org/): Available from [Buildtester](http://software.farseer.org/)
 
 ---
 
-## Cluster version
+## Cluster Version
 
 There is a branch developed with a MPI cluster implementation of Stockfish, allowing stockfish to run on clusters of compute nodes connected with a high-speed network. See https://github.com/official-stockfish/Stockfish/pull/1571 for some discussion of the initial implementation and https://github.com/official-stockfish/Stockfish/pull/1931 for some early performance results.
 

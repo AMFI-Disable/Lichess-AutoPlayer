@@ -56,7 +56,7 @@ In the `UCRT64` Shell run:
 
 ##### clang-format
 
-Download [LLVM 20](https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.5/LLVM-20.1.5-win64.exe)
+Download from [LLVM 20 Releases](https://github.com/llvm/llvm-project/releases/tag/llvmorg-20.1.5)
 
 Run the executable and in the installer choose:
 `Add LLVM to the system PATH for current user`
