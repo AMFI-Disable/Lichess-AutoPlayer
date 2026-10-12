@@ -1,6 +1,16 @@
-# Lichess AutoPlayer
+# 🧩 Lichess-AutoPlayer - Automated Move Automation For Bot Accounts
 
-Automated move execution, move timing customization, move delay jittering, search depth/ELO scaling, rated match selection, and automatic "New Opponent" match seeking for **Lichess Bot Accounts**.
+<div align="center">
+
+**Autonomous Chess Engine Companion & In-Page Match Automation**  
+*In-page userscript with client-side WebAssembly Stockfish evaluation for authorized Lichess bot accounts.*
+
+[![Browser: Chrome / Firefox / Safari](https://img.shields.io/badge/Browser-Chrome%20%7C%20Firefox%20%7C%20Safari-blue.svg?style=flat-square&logo=googlechrome)](https://google.com/chrome)
+[![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](license)
+[![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#-key-features)
+
+</div>
 
 ---
 
@@ -16,9 +26,18 @@ Automated move execution, move timing customization, move delay jittering, searc
 
 ---
 
-## 🌟 Features
+## 🧭 Table Of Contents
 
-- **Browser-Based**: Runs Stockfish directly in your browser.
+- [Key Features](#-key-features)
+- [Installation And Setup](#-installation-and-setup)
+- [Usage Guide](#-usage-guide)
+- [License And Terms](#-license-and-terms)
+
+---
+
+## 🚀 Key Features
+
+- **Browser-Based**: Runs Stockfish directly in your browser with zero external dependencies.
 - **Clean Board**: Executes moves without arrows or visual hint overlays.
 - **Interactive In-Page Control UI**:
   - **Rated Game Selection**: Easily choose Bullet (1+0), Blitz (3+0, 5+3), Rapid (10+0), etc.
@@ -30,18 +49,12 @@ Automated move execution, move timing customization, move delay jittering, searc
 
 ---
 
-## 🛠️ Quick Setup Guide
+## 📦 Installation And Setup
 
-### 1. Prerequisites
-
-- Any browser (Chrome, Chrome Dev, Safari, Firefox).
-- **Tampermonkey** or **Violentmonkey** extension installed.
-
-### 2. Install Userscript
-
-1. Open Tampermonkey in your browser.
-2. Create a new script and copy/paste the code from [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
-3. Save the script and navigate to [https://lichess.org](https://lichess.org).
+1. Install a userscript manager browser extension like [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
+2. Copy the full source code from [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
+3. In your userscript manager Dashboard, create a new userscript, paste the code, and save.
+4. Navigate to [Lichess](https://lichess.org). The panel will load automatically.
 
 ---
 
@@ -56,3 +69,9 @@ Automated move execution, move timing customization, move delay jittering, searc
    - **Depth & ELO**: Set engine strength.
 4. Click **START AUTOPLAYER**.
 5. The script will automatically search for matches, calculate Stockfish moves in your browser, apply your delay jitter, execute moves on turn, and auto-click **New Opponent** when the match finishes!
+
+---
+
+## 📄 License And Terms
+
+Licensed under the [GNU General Public License v3.0](license). Copyright (c) 2026 AMFI-Disable.
