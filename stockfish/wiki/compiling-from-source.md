@@ -1,4 +1,4 @@
-# How to compile Stockfish from source code
+# How To Compile Stockfish From Source Code
 
 - [General](#general)
 - [Linux](#linux)
@@ -179,10 +179,9 @@ pacman -S --noconfirm --needed unzip make mingw-w64-x86_64-gcc
 branch='master'
 github_user='official-stockfish'
 
-# download the Stockfish source code
-wget -O ${branch}.zip https://github.com/${github_user}/Stockfish/archive/refs/heads/${branch}.zip
-unzip -o ${branch}.zip
-pushd Stockfish-${branch}/src
+# clone the Stockfish repository
+git clone --depth 1 -b ${branch} https://github.com/${github_user}/Stockfish.git
+pushd Stockfish/src
 
 # remove old nets
 file_nnue=$(grep 'define.*EvalFileDefaultName' evaluate.h | grep -Ewo 'nn-[a-z0-9]{12}.nnue')
@@ -215,10 +214,9 @@ pacman -S --noconfirm --needed unzip make mingw-w64-i686-gcc
 branch='master'
 github_user='official-stockfish'
 
-# download the Stockfish source code
-wget -O ${branch}.zip https://github.com/${github_user}/Stockfish/archive/refs/heads/${branch}.zip
-unzip -o ${branch}.zip
-pushd Stockfish-${branch}/src
+# clone the Stockfish repository
+git clone --depth 1 -b ${branch} https://github.com/${github_user}/Stockfish.git
+pushd Stockfish/src
 
 # remove old nets
 file_nnue=$(grep 'define.*EvalFileDefaultName' evaluate.h | grep -Ewo 'nn-[a-z0-9]{12}.nnue')
@@ -260,10 +258,9 @@ pacman -S --noconfirm --needed unzip make mingw-w64-clang-x86_64-clang
 branch='master'
 github_user='official-stockfish'
 
-# download the Stockfish source code
-wget -O ${branch}.zip https://github.com/${github_user}/Stockfish/archive/refs/heads/${branch}.zip
-unzip -o ${branch}.zip
-pushd Stockfish-${branch}/src
+# clone the Stockfish repository
+git clone --depth 1 -b ${branch} https://github.com/${github_user}/Stockfish.git
+pushd Stockfish/src
 
 # remove old nets
 file_nnue=$(grep 'define.*EvalFileDefaultName' evaluate.h | grep -Ewo 'nn-[a-z0-9]{12}.nnue')
@@ -322,7 +319,7 @@ If this tutorial will not work on your pc, you may try to change the `Windows Se
  1. Try to turn off _"Force randomization for images (Mandatory ASLR)"_, if this not solve the problem then,
  2. Try to turn off also _"Randomize memory allocations (Bottom-up ASLR)"_ .
 
-### Using other MinGW-w64 with MSYS2
+### Using Other MinGW-w64 With MSYS2
 
 To use with MSYS2 a MinGW-w64 built by other projects, simply follow these instructions (Windows 64 bit):
 1. Download another version of MinGW-w64, e.g. [MinGW-w64 (64-bit) GCC 8.1.0](https://www.msys2.org/), extract the *mingw64* folder renaming it to *mingw64-810*, copy the folder into *C:\msys64*, check to have the directory *C:\msys64\mingw64-810\bin*
@@ -345,10 +342,9 @@ fi
 branch='master'
 github_user='official-stockfish'
 
-# download the Stockfish source code
-wget -O ${branch}.zip https://github.com/${github_user}/Stockfish/archive/refs/heads/${branch}.zip
-unzip ${branch}.zip
-cd Stockfish-${branch}/src
+# clone the Stockfish repository
+git clone --depth 1 -b ${branch} https://github.com/${github_user}/Stockfish.git
+cd Stockfish/src
 
 # find the CPU architecture
 # CPU without popcnt and bmi2 instructions (e.g. older than Intel Sandy Bridge)
@@ -462,7 +458,7 @@ See [this pull request](https://github.com/official-stockfish/Stockfish/pull/304
 > [!WARNING]
 > Running Stockfish, especially with multiple threads, is computationally intensive and can drain your device's battery quickly.
 
-### Compile on Android with Termux
+### Compile On Android With Termux
 
 You can build Stockfish directly on your Android device using the [Termux](https://termux.dev/en/) app. This avoids the need for a separate computer or the Android NDK.
 
@@ -483,7 +479,7 @@ make -j profile-build COMP=clang
 
 After the compilation finishes, the binary will be located at `Stockfish/src/stockfish`.
 
-### Cross-Compile on a PC
+### Cross-Compile On A PC
 
 This method requires a computer to build the Android binary.
 
@@ -627,7 +623,7 @@ These steps are the same for all PC operating systems.
 
 ---
 
-## Cross compilation
+## Cross Compilation
 
 ### For Windows in Ubuntu
 
@@ -687,7 +683,7 @@ fi
 ```
 </details>
 
-### For all platforms (host/target) using Zig
+### For All Platforms (Host/Target) Using Zig
 
 [Zig](https://ziglang.org/) is a programming language in early development stage that is binary compatible with C.
 The Zig toolchain, based on LLVM, ships the source code of all the required libraries to easily cross compile Zig/C/C++ code for several CPU Architecture and OS combinations. All the work required is to set as target the proper supported [triple \<arch-os-abi\>](https://github.com/ziglang/zig-bootstrap#supported-triples) (eg `x86_64-windows-gnu`, `aarch64-linux-musl`).
@@ -737,12 +733,8 @@ Here is a script to cross compile from a msys2 msys/mingw-w64 shell a static bui
 # Use msys2 to cross compile
 # a static build for armv8 and armv7 on Linux/Android
 
-# one time configuration
-pacman -S --noconfirm --needed git make unzip
-wget https://ziglang.org/builds/zig-windows-x86_64-0.14.0-dev.2546+0ff0bdb4a.zip
-
-unzip zig-windows-x86_64-0.14.0-dev.2546+0ff0bdb4a.zip
-export PATH="$(pwd)/zig-windows-x86_64-0.14.0-dev.2546+0ff0bdb4a:$PATH"
+# one time configuration: install git, make, and zig (or obtain from https://ziglang.org/download/)
+pacman -S --noconfirm --needed git make mingw-w64-x86_64-zig
 
 # armv8 static build with musl libc
 git clone https://github.com/official-stockfish/Stockfish.git
@@ -754,7 +746,7 @@ mv stockfish.exe stockfish_armv8
 
 ---
 
-## Lower compilation time
+## Lower Compilation Time
 
 It is possible to lower the compile time on cpu multi core using make with the flag *-j \<n_jobs\>*, where \<n_jobs\> is the number of jobs (commands) to run simultaneously. The flag *-j* enables one job for each logical CPU core. 
 
@@ -764,7 +756,7 @@ make -j <n_jobs> profile-build ARCH=x86-64-avx2 COMP=mingw
 
 ---
 
-## Optimize for your CPU
+## Optimize For Your CPU
 
 To get the max speedup for your CPU (1.5% on Ivy Bridge) simply prepend the shell variable `CXXFLAGS='-march=native'` to the `make` command. At example, for a CPU Sandy/Ivy Bridge use this command:
 

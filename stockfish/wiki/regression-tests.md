@@ -548,11 +548,11 @@ chess engines. Here is a collection of some useful links in that regard.
 * [Next Chess Move (NCM)](https://nextchessmove.com/dev-builds)
 * [Stefan Pohl Computer Chess (SPCC)](https://www.sp-cc.de)
 
-[book-8mv3]:      https://github.com/official-stockfish/books/blob/master/8moves_v3.pgn.zip
-[book-uho21epd]:  https://github.com/official-stockfish/books/blob/master/UHO_XXL_%2B0.90_%2B1.19.epd.zip
-[book-uho4060v2]: https://github.com/official-stockfish/books/blob/master/UHO_4060_v2.epd.zip
-[book-uho4060v3]: https://github.com/official-stockfish/books/blob/master/UHO_4060_v3.epd.zip
-[book-uho4060v4]: https://github.com/official-stockfish/books/blob/master/UHO_4060_v4.epd.zip
+[book-8mv3]:      https://github.com/official-stockfish/books
+[book-uho21epd]:  https://github.com/official-stockfish/books
+[book-uho4060v2]: https://github.com/official-stockfish/books
+[book-uho4060v3]: https://github.com/official-stockfish/books
+[book-uho4060v4]: https://github.com/official-stockfish/books
 [Fishtest]:       https://tests.stockfishchess.org/tests
 [Stockfish 2.3.1]:https://github.com/official-stockfish/Stockfish/commit/3caeabf73b12ad53ac7ba64122a2feab819c6527
 [040313-dif]:     https://github.com/official-stockfish/Stockfish/compare/3caeabf73b...10429dd616

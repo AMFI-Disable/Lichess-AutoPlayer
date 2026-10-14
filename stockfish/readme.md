@@ -63,13 +63,13 @@ This distribution of Stockfish consists of the following files:
 
 __See [Contributing Guide](CONTRIBUTING.md).__
 
-### Donating hardware
+### Donating Hardware
 
 Improving Stockfish requires a massive amount of testing. You can donate your
 hardware resources by installing the [Fishtest Worker][worker-link] and viewing
 the current tests on [Fishtest][fishtest-link].
 
-### Improving the code
+### Improving The Code
 
 In the [chessprogramming wiki][programming-link], many techniques used in
 Stockfish are explained with a lot of background information.
@@ -104,7 +104,7 @@ Detailed compilation instructions for all platforms can be found in our
 [documentation][wiki-compile-link]. Our wiki also has information about
 the [UCI commands][wiki-uci-link] supported by Stockfish.
 
-## Terms of use
+## Terms Of Use
 
 Stockfish is free and distributed under the
 [**GNU General Public License version 3**][license-link] (GPL v3). Essentially,
