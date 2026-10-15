@@ -4,6 +4,18 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- Updated submodule pointer for modern dependencies.
+
+### Fixed
+
+- Removed and sanitized direct binary links in documentation to ensure full policy compliance.
+
+---
+
 ## [1.2.0] - Engine Integration And Input Stability
 
 ### Added
