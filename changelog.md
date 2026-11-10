@@ -6,8 +6,15 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ## [Unreleased]
 
+### Added
+
+- Native macOS CoreGraphics click helper executable in Swift (`server/click-helper.swift`) and local HTTP mouse bridge daemon (`server/mouse-bridge.js`) for OS-level mouse event synthesis.
+- Automated unit test suites covering the mouse bridge server (`test/mouse-bridge.test.js`) and userscript logic (`test/userscript.test.js`) including clock parsing, move budget scaling, board geometry, and engine variation rankings.
+- Automated `npm test` verification step integrated into GitHub Actions CI pipeline (`.github/workflows/ci.yml`).
+
 ### Changed
 
+- Overhauled `lichess-autoplayer.user.js` to version 2.7.0 with clock-dependent dynamic search budgets, engine multi-PV variation selection, automatic game analysis tracking, and hardware mouse event routing.
 - Updated submodule pointer for modern dependencies.
 
 ### Fixed
