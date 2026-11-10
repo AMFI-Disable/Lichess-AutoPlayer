@@ -31,6 +31,9 @@ jobs:
           node --check server/engine-bridge.js
           echo "JavaScript syntax validated."
 
+      - name: Run Unit Tests
+        run: npm test
+
       - name: Validate YAML Files
         run: |
           ruby -ryaml -e '

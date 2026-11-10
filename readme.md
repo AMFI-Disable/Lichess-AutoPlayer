@@ -1,77 +1,31 @@
-# 🧩 Lichess-AutoPlayer - Automated Move Automation For Bot Accounts
+# Lichess AutoPlayer
 
-<div align="center">
+A single userscript that experiments with automatic pairing and chess play using Stockfish in a browser worker. The panel provides a time control, game limit, approximate strength slider, connection status, and controls to stop immediately or finish the current game before stopping matchmaking. Controls can be collapsed; Recent games keeps up to ten games recorded after this update. By default the script requests Lichess computer analysis after each game and waits up to 90 seconds before continuing; disable this in Controls. Move-quality counts appear when Lichess analysis is available and can be refreshed. If analysis fails or is rate-limited, the script stops with an error.
 
-**Autonomous Chess Engine Companion & In-Page Match Automation**  
-*In-page userscript with client-side WebAssembly Stockfish evaluation for authorized Lichess bot accounts.*
+> **Lichess restrictions:** Lichess's [fair-play rules](https://lichess.org/page/fair-play) prohibit extensions that assist with playing moves. Automating play with this userscript can violate those rules, including on a bot account. For online automated play, use the [official Bot API](https://lichess.org/api#tag/Bot) and a designated bot account instead. Use this project only where you have permission to test it.
 
-[![Browser: Chrome / Firefox / Safari](https://img.shields.io/badge/Browser-Chrome%20%7C%20Firefox%20%7C%20Safari-blue.svg?style=flat-square&logo=googlechrome)](https://google.com/chrome)
-[![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](license)
-[![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#-key-features)
+## Installation
 
-</div>
+1. Install Tampermonkey or Violentmonkey.
+2. Create a userscript from the contents of [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
+3. Open the Lichess lobby. Select a time control, number of games, and strength, then press **Start**. Press **Stop** to cancel pending automation.
 
----
+The script downloads chess.js and Stockfish from cdnjs. An internet connection and a browser/userscript manager that permits the worker and WebAssembly download are required. Engine errors are shown in the panel; press Start to retry. The separate local Node bridge is not used by the userscript.
 
-## ⚖️ Educational & Fair-Play Disclaimer
+## Behavior And Limitations
 
-> [!CAUTION]
-> **IMPORTANT NOTICE & DISCLAIMER**:
-> This codebase is provided **strictly for educational, research, and testing purposes on official, licensed Lichess Bot accounts**.
->
-> Using automated assistance or AutoPlayers on standard human Lichess accounts violates the [Lichess Terms of Service](https://lichess.org/terms-of-service) and anti-cheating policies, which will result in permanent account termination.
->
-> The developers and contributors accept no responsibility or liability for misuse of this software. Always comply with platform rules and use only on authorized bot accounts or local offline testing environments.
+The script looks for the selected quick-pairing pool in the lobby, then reads a standard game's displayed move list and sends the position to Stockfish. The engine may choose a weaker evaluated legal move, bounded by a score threshold when ahead; shallow analysis cannot guarantee an advantage. The 1000–3000 slider maps to Stockfish skill levels and is not a calibrated Elo rating. The script limits engine search time based on the displayed player clock, with a short fallback when the clock cannot be read. A small reserve allows for mouse movement; the clock can still expire. The session continues across page navigation until stopped or the game limit is reached.
 
----
+The desktop companion attempts native mouse input; this path has not been verified in a live game. Lichess can also change its page structure, restrict pools, or disconnect. The script stops with an error when it cannot confirm a pairing or submitted move; it cannot guarantee multiplayer availability or successful play. It assumes the board is oriented from the player's side and a standard starting position, and is not intended for variants, spectators, or analysis pages.
 
-## 🧭 Table Of Contents
+## Development
 
-- [Key Features](#-key-features)
-- [Installation And Setup](#-installation-and-setup)
-- [Usage Guide](#-usage-guide)
-- [License And Terms](#-license-and-terms)
+Run `npm test` for the local unit tests and `node --check lichess-autoplayer.user.js` for syntax validation. Tests do not establish that live pairing or board input works on Lichess.
 
----
+Licensed under [GPL-3.0](license).
 
-## 🚀 Key Features
+## macOS Desktop Companion (Experimental)
 
-- **Browser-Based**: Runs Stockfish directly in your browser with zero external dependencies.
-- **Clean Board**: Executes moves without arrows or visual hint overlays.
-- **Interactive In-Page Control UI**:
-  - **Rated Game Selection**: Easily choose Bullet (1+0), Blitz (3+0, 5+3), Rapid (10+0), etc.
-  - **Move Timing Control**: Set your base move delay in milliseconds.
-  - **Humanized Move Jitter**: Randomize move delays per turn within a customizable jitter range.
-  - **Difficulty Scaling**: Adjust Stockfish search depth (`depth 1-20`) or simulated ELO (`UCI_Elo`).
-  - **Match Loop Control**: Set target match count (e.g. 1, 5, 10 games) or run continuously on `Infinite` mode.
-  - **Automated "New Opponent" Re-queueing**: Automatically clicks "New Opponent" to start a new match immediately after game completion.
+Install dependencies with `npm install`, then run `npm run mouse` in a terminal. Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
 
----
-
-## 📦 Installation And Setup
-
-1. Install a userscript manager browser extension like [Tampermonkey](https://www.tampermonkey.net/) or [Violentmonkey](https://violentmonkey.github.io/).
-2. Copy the full source code from [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
-3. In your userscript manager Dashboard, create a new userscript, paste the code, and save.
-4. Navigate to [Lichess](https://lichess.org). The panel will load automatically.
-
----
-
-## 🎮 Usage Guide
-
-1. Navigate to `https://lichess.org` in your browser.
-2. The **🤖 Lichess AutoPlayer** panel will appear at the bottom right.
-3. Configure your desired options:
-   - **Game Type**: Choose rated game mode.
-   - **Matches**: Set target match count or `Infinite`.
-   - **Base Delay & Jitter**: Configure move delay timing.
-   - **Depth & ELO**: Set engine strength.
-4. Click **START AUTOPLAYER**.
-5. The script will automatically search for matches, calculate Stockfish moves in your browser, apply your delay jitter, execute moves on turn, and auto-click **New Opponent** when the match finishes!
-
----
-
-## 📄 License And Terms
-
-Licensed under the [GNU General Public License v3.0](license). Copyright (c) 2026 AMFI-Disable.
+The helper accepts authenticated HTTP requests on localhost through the userscript manager; the session key is required for every request. It verifies the foreground application, its title, and window bounds before attempting input. It stops on focus loss or failure to confirm a move. This is experimental: browser window geometry, displays, permissions and native input have not been verified end to end. Promotion currently stops automation and must be played manually. Avoid starting a game until the setup has been verified in a permitted test environment.

@@ -1,515 +1,432 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/amfi-disable/Lichess-AutoPlayer
-// @version      1.0.0
-// @description  Browser AutoPlayer for licensed Lichess Bot accounts.
-// @author       amfi-disable
-// @match        *://lichess.org/*
+// @version      2.7.0
+// @description  Configurable chess automation for bot testing
+// @icon         https://lichess.org/favicon.ico
+// @match        https://lichess.org/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
 // @connect      cdnjs.cloudflare.com
-// @connect      cdn.jsdelivr.net
-// @run-at       document-idle
+// @connect      127.0.0.1
+// @connect      lichess.org
 // @require      https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  // State & Default Settings
-  const state = {
-    active: GM_getValue('ap_active', false),
-    engineReady: false,
-    gameType: GM_getValue('ap_gameType', '1+0'), // '1+0', '3+0', '5+3', '10+0'
-    matchLimit: GM_getValue('ap_matchLimit', 'infinite'), // 'infinite' or number
-    matchesPlayed: 0,
-    baseDelayMs: GM_getValue('ap_baseDelayMs', 800),
-    jitterMs: GM_getValue('ap_jitterMs', 400),
-    depth: GM_getValue('ap_depth', 12),
-    elo: GM_getValue('ap_elo', 1500),
-    limitElo: GM_getValue('ap_limitElo', false),
-    isProcessingMove: false,
-    lastMovesStr: '',
-    engine: null
+  const DEFAULTS = { time: '3+0', limit: '1', strength: 1500, autoAnalysis: true };
+  const TIMES = ['1+0', '3+0', '5+3', '10+0'];
+  const LIMITS = ['1', '5', '10', 'infinite'];
+  const ENGINE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/';
+
+  function normalizeSettings(value) {
+    value = value || {};
+    const legacy = { casual: 1000, club: 1500, strong: 2500 };
+    const rating = Number(legacy[value.strength] || value.strength);
+    return {
+      time: TIMES.includes(value.time) ? value.time : DEFAULTS.time,
+      limit: LIMITS.includes(String(value.limit)) ? String(value.limit) : DEFAULTS.limit,
+      strength: Number.isFinite(rating) && rating >= 1000 && rating <= 3000 ? Math.round(rating / 250) * 250 : DEFAULTS.strength,
+      autoAnalysis: typeof value.autoAnalysis === 'boolean' ? value.autoAnalysis : true
+    };
+  }
+  function skillFor(rating) { return Math.round((rating - 1000) / 100); }
+  function parseClock(text) {
+    const match = /^\s*(\d{1,3}):(\d{2})(?:[.,](\d{1,2}))?\s*$/.exec(text || '');
+    if (!match || Number(match[2]) >= 60) return null;
+    return (Number(match[1]) * 60 + Number(match[2]) + Number('0.' + (match[3] || '0'))) * 1000;
+  }
+  function moveBudget(remaining) {
+    if (remaining === null) return { search: 500, delay: 150 };
+    const available = Math.max(0, remaining - 1200);
+    return { search: Math.max(50, Math.min(2000, Math.floor(available / 35))), delay: remaining > 15000 ? 250 : remaining > 5000 ? 100 : 0 };
+  }
+  function mouseSpeed(timeControl, remaining) {
+    if (remaining !== null && remaining < 15000) return 'quick';
+    if (timeControl === '1+0') return 'bullet';
+    if (timeControl === '10+0') return 'rapid';
+    return 'blitz';
+  }
+  function parseVariation(line) {
+    if (!line.startsWith('info ') || /\b(?:lowerbound|upperbound)\b/.test(line)) return null;
+    const depth = /\bdepth (\d+)/.exec(line), rank = /\bmultipv (\d+)/.exec(line);
+    const score = /\bscore cp (-?\d+)/.exec(line), pv = /\bpv ([a-h][1-8][a-h][1-8][qrbn]?)(?:\s|$)/.exec(line);
+    if (!depth || !rank || !score || !pv) return null;
+    return { depth: Number(depth[1]), rank: Number(rank[1]), score: Number(score[1]), move: pv[1] };
+  }
+  function chooseVariation(best, legal, variations, random = Math.random) {
+    if (random() >= 0.25) return best;
+    const top = variations.find(v => v.rank === 1 && v.move === best);
+    if (!top) return best;
+    const tolerance = top.score >= 300 ? 150 : 75;
+    const floor = top.score >= 150 ? 75 : -Infinity;
+    const candidates = variations.filter(v => v.depth === top.depth && v.rank > 1 && v.move !== best && legal.includes(v.move) && v.score <= top.score && v.score >= top.score - tolerance && v.score >= floor);
+    return candidates.length ? candidates[Math.floor(random() * candidates.length)].move : best;
+  }
+  function gameOutcome(result, color) {
+    if (result === '1-0') return color === 'w' ? 'Win' : 'Loss';
+    if (result === '0-1') return color === 'b' ? 'Win' : 'Loss';
+    return /^(½-½|1\/2-1\/2)$/.test(result) ? 'Draw' : 'Other';
+  }
+  function analysisCounts(data, color) {
+    const a = data?.players?.[color === 'w' ? 'white' : 'black']?.analysis;
+    return a && ['inaccuracy', 'mistake', 'blunder'].every(k => Number.isInteger(a[k]) && a[k] >= 0)
+      ? { inaccuracy: a.inaccuracy, mistake: a.mistake, blunder: a.blunder } : null;
+  }
+  function squarePosition(square, rect, flipped) {
+    const file = square.charCodeAt(0) - 97, rank = Number(square[1]) - 1;
+    return { x: rect.left + ((flipped ? 7 - file : file) + 0.5) * rect.width / 8,
+      y: rect.top + ((flipped ? rank : 7 - rank) + 0.5) * rect.height / 8 };
+  }
+  function sameGeometry(a, b) {
+    return !!a && !!b && ['left', 'top', 'width', 'height', 'screenX', 'screenY', 'outerWidth', 'outerHeight'].every(key => Math.abs(a[key] - b[key]) < 1);
+  }
+  function gameIdFromPath(path) {
+    return /^\/(?:game\/)?([a-zA-Z0-9]{12})(?:\/(?:white|black))?\/?$/.exec(path)?.[1] || null;
+  }
+  function parseMoves(sans, ChessClass) {
+    if (typeof ChessClass !== 'function') throw new Error('Chess library failed to load');
+    const chess = new ChessClass();
+    for (const san of sans) {
+      if (!chess.move(san.replace(/[!?+#]/g, ''), { sloppy: true })) throw new Error('Could not read game moves');
+    }
+    return chess;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath };
+    return;
+  }
+
+  const savedSession = (() => { try { return JSON.parse(sessionStorage.getItem('ap_session') || '{}'); } catch { return {}; } })();
+  const app = {
+    settings: normalizeSettings(GM_getValue('ap_settings', {})), active: false,
+    worker: null, ready: false, epoch: 0, timer: null, timeout: null, game: null,
+    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
   };
-
-  // In-browser engine loader.
-  function initEngine() {
-    updateUIStatus('Initializing Engine...', '#ff9800');
-
-    function setupEngineInstance(engineWorker) {
-      state.engine = engineWorker;
-
-      state.engine.onmessage = function (event) {
-        const line = typeof event === 'string' ? event : (event.data || event);
-        const str = typeof line === 'string' ? line : (line.data || '');
-
-        if (str.includes('readyok') || str.includes('uciok') || str.includes('Stockfish')) {
-          if (!state.engineReady) {
-            state.engineReady = true;
-            updateUIStatus('Engine Ready', '#4caf50');
-          }
-        }
-        if (str.includes('bestmove')) {
-          handleBestMoveOutput(str);
-        }
-      };
-
-      state.engine.postMessage('uci');
-      configureEngineOptions();
-      state.engine.postMessage('isready');
-    }
-
-    // Try direct factory function if exposed in GM sandbox
-    let sfFactory = null;
-    if (typeof window.STOCKFISH === 'function') sfFactory = window.STOCKFISH;
-    else if (typeof STOCKFISH === 'function') sfFactory = STOCKFISH;
-    else if (typeof window.Stockfish === 'function') sfFactory = window.Stockfish;
-    else if (typeof Stockfish === 'function') sfFactory = Stockfish;
-    else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.STOCKFISH === 'function') sfFactory = unsafeWindow.STOCKFISH;
-
-    if (sfFactory) {
-      setupEngineInstance(sfFactory());
-      return;
-    }
-
-    // Fetch Stockfish engine JS via GM_xmlhttpRequest to bypass Lichess CSP / CORS blocks
-    const stockfishUrl = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
-    GM_xmlhttpRequest({
-      method: 'GET',
-      url: stockfishUrl,
-      onload: function (response) {
-        try {
-          const sfCode = response.responseText;
-          const wrapperCode = `
-            ${sfCode}
-            var engine = (typeof STOCKFISH === 'function' ? STOCKFISH : Stockfish)();
-            engine.onmessage = function(e) { self.postMessage(e); };
-            self.onmessage = function(e) { engine.postMessage(e.data); };
-          `;
-          const blob = new Blob([wrapperCode], { type: 'application/javascript' });
-          const worker = new Worker(URL.createObjectURL(blob));
-          setupEngineInstance(worker);
-        } catch (err) {
-          console.error('[AutoPlayer] Error launching GM_xmlhttpRequest Stockfish worker:', err);
-          updateUIStatus('Engine Load Failed', '#f44336');
-        }
-      },
-      onerror: function (err) {
-        console.error('[AutoPlayer] GM_xmlhttpRequest fetch failed:', err);
-        updateUIStatus('Engine Download Failed', '#f44336');
+  const ui = {
+    status(message, error = false) {
+      const node = document.getElementById('ap-status');
+      if (node) { node.textContent = message; node.classList.toggle('error', error); }
+    },
+    render() {
+      const panel = document.createElement('section');
+      panel.id = 'ap-panel';
+      panel.innerHTML = `<style>
+        #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
+        #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.0</small></h2>
+      <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
+      <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
+      <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
+      <label><input type="checkbox" id="ap-autoAnalysis"> Analyze finished games before continuing</label><label for="ap-key">Desktop session key</label><input id="ap-key" type="password" autocomplete="off" placeholder="Paste key from CLI" style="width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)">
+      </details><button id="ap-toggle" type="button">Start</button><button id="ap-stop-after" class="secondary" type="button" hidden>Stop after this game</button><details id="ap-history"><summary>Recent games</summary><div id="ap-history-list"></div><button id="ap-refresh" class="secondary" type="button">Refresh analysis</button></details><p id="ap-status" role="status" aria-live="polite">Stopped</p><small>Automated play · bot testing</small>`;
+      document.body.appendChild(panel);
+      for (const key of ['time', 'limit', 'strength']) {
+        const input = panel.querySelector(`#ap-${key}`); input.value = app.settings[key];
+        input.addEventListener(key === 'strength' ? 'input' : 'change', () => { app.settings[key] = key === 'strength' ? Number(input.value) : input.value; if (key === 'strength') panel.querySelector('#ap-strength-value').textContent = `~${input.value}`; GM_setValue('ap_settings', app.settings); });
+        if (key === 'strength') panel.querySelector('#ap-strength-value').textContent = `~${input.value}`;
       }
+      const analysisInput = panel.querySelector('#ap-autoAnalysis');
+      analysisInput.checked = app.settings.autoAnalysis;
+      analysisInput.addEventListener('change', () => { app.settings.autoAnalysis = analysisInput.checked; GM_setValue('ap_settings', app.settings); });
+      const keyInput = panel.querySelector('#ap-key');
+      keyInput.value = GM_getValue('ap_session_key', '');
+      keyInput.addEventListener('input', () => GM_setValue('ap_session_key', keyInput.value.trim()));
+      panel.querySelector('#ap-toggle').addEventListener('click', () => app.active ? stop('Stopped') : start());
+      panel.querySelector('#ap-stop-after').addEventListener('click', () => {
+        const game = readGame();
+        if (!game || game.ended) return stop('Matchmaking stopped');
+        app.stopAfter = true; saveSession(true); ui.update(); ui.status('Will stop after this game');
+      });
+      panel.querySelector('#ap-history').addEventListener('toggle', event => { if (event.target.open) { renderHistory(); refreshHistory(); } });
+      panel.querySelector('#ap-refresh').addEventListener('click', refreshHistory);
+      renderHistory();
+    },
+    update() {
+      const btn = document.getElementById('ap-toggle');
+      btn.textContent = app.active ? 'Stop bot now' : 'Start'; btn.dataset.active = String(app.active);
+      const later = document.getElementById('ap-stop-after'); later.hidden = !app.active; later.disabled = app.stopAfter; later.textContent = app.stopAfter ? 'Stopping after this game' : 'Stop after this game';
+      for (const key of ['time', 'limit', 'strength', 'key', 'autoAnalysis']) document.getElementById(`ap-${key}`).disabled = app.active;
+    }
+  };
+  function saveSession(active) {
+    sessionStorage.setItem('ap_session', JSON.stringify({ active, played: app.played, finished: Array.from(app.finished), stopAfter: app.stopAfter }));
+  }
+  function invalidate() {
+    app.epoch++; clearTimeout(app.timer); app.timer = null;
+    if (app.bridgeReady && app.pending?.id) bridgeRequest('/cancel', { id: app.pending.id }, () => {});
+    if (app.pending?.phase === 'search' && app.worker && app.ready) {
+      app.draining = true; app.worker.postMessage('stop');
+      app.timeout = setTimeout(() => { if (app.active && app.draining) stop('Engine did not stop. Press Start to retry.', true); }, 5000);
+    }
+    app.pending = null;
+  }
+  function stop(message, error = false) {
+    app.active = false; app.stopAfter = false; app.analysisJob = null; saveSession(false); invalidate(); clearTimeout(app.timeout);
+    const activePool = document.querySelector('.lpool.active[data-id]');
+    if (activePool && app.pairing) activePool.click();
+    app.pairing = null;
+    if (app.worker) { app.worker.terminate(); app.worker = null; }
+    app.ready = false; app.draining = false; clearTimeout(app.bridgeTimeout); app.bridge = null; app.bridgeReady = false; ui.update(); ui.status(message, error);
+  }
+  function bridgeRequest(route, data, done) {
+    GM_xmlhttpRequest({ method: 'POST', url: `http://127.0.0.1:17349${route}`,
+      headers: { 'Content-Type': 'application/json', 'X-Session-Key': GM_getValue('ap_session_key', '') },
+      data: JSON.stringify(data), timeout: 12000,
+      onload: response => { let body = {}; try { body = JSON.parse(response.responseText); } catch {} done(response.status === 200 ? null : (body.error || `HTTP ${response.status}`), body); },
+      onerror: () => done('Connection failed'), ontimeout: () => done('Connection timed out')
     });
   }
-
-  function configureEngineOptions() {
-    if (!state.engine) return;
-    state.engine.postMessage('ucinewgame');
-    if (state.limitElo && state.elo) {
-      state.engine.postMessage('setoption name UCI_LimitStrength value true');
-      state.engine.postMessage(`setoption name UCI_Elo value ${state.elo}`);
-    } else {
-      state.engine.postMessage('setoption name UCI_LimitStrength value false');
-    }
-    state.engine.postMessage('isready');
+  function start(resume = false) {
+    const key = document.getElementById('ap-key').value;
+    if (!/^[a-f0-9]{48}$/.test(key)) { ui.status('Enter the desktop session key first.', true); return; }
+    GM_setValue('ap_session_key', key);
+    app.active = true; if (!resume) { app.played = 0; app.finished.clear(); app.stopAfter = false; } saveSession(true); app.game = null;
+    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Connecting to engine…');
+    const epoch = ++app.epoch;
+    bridgeRequest('/status', {}, (error) => {
+      if (!app.active || app.epoch !== epoch) return;
+      if (error) return stop(`Desktop helper: ${error}`, true);
+      app.bridgeReady = true;
+    });
+    app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop('Engine timed out. Press Start to retry.', true); }, 20000);
+    GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js',
+      onload(response) {
+        if (!app.active || app.epoch !== epoch) return;
+        if (response.status !== 200) return stop(`Engine download failed (${response.status}). Press Start to retry.`, true);
+        try {
+          // Stockfish's worker resolves its wasm relative to its own blob URL otherwise.
+          const code = response.responseText.replace('locateFile:function(file){return file}', `locateFile:function(file){return '${ENGINE_URL}'+file}`);
+          const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+          const worker = new Worker(url); URL.revokeObjectURL(url); app.worker = worker;
+          worker.onerror = () => stop('Engine worker failed. Press Start to retry.', true);
+          worker.onmessage = event => engineMessage(String(event.data));
+          worker.postMessage('uci');
+        } catch (error) { stop(`Engine failed: ${error.message}`, true); }
+      }, onerror() { if (app.active && app.epoch === epoch) stop('Engine download failed. Press Start to retry.', true); }
+    });
   }
-
-  // Handle Bestmove Event
-  function handleBestMoveOutput(bestMoveLine) {
-    const match = bestMoveLine.match(/^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
-    if (!match) {
-      state.isProcessingMove = false;
-      return;
+  function engineMessage(line) {
+    if (!app.active) return;
+    if (line.trim() === 'uciok' && !app.ready) {
+      app.worker.postMessage(`setoption name Skill Level value ${skillFor(app.settings.strength)}`);
+      app.worker.postMessage('setoption name MultiPV value 3');
+      app.worker.postMessage('isready');
+    } else if (line.trim() === 'readyok' && !app.ready) {
+      app.ready = true; clearTimeout(app.timeout); ui.status('Engine connected');
+    } else if (line.startsWith('info ') && app.pending?.phase === 'search' && !app.draining) {
+      const variation = parseVariation(line);
+      if (variation && variation.rank <= 3) {
+        const all = app.pending.variations;
+        if (!all[variation.depth]) all[variation.depth] = {};
+        all[variation.depth][variation.rank] = variation;
+      }
+    } else if (line.startsWith('bestmove ') && app.draining) {
+      app.draining = false; clearTimeout(app.timeout);
+    } else if (line.startsWith('bestmove ') && app.pending && app.pending.phase === 'search') {
+      clearTimeout(app.timer);
+      const pending = app.pending, match = /^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/.exec(line);
+      if (!match || !pending.legal.includes(match[1])) return stop('Engine returned an invalid move.', true);
+      pending.phase = 'delay';
+      const groups = Object.values(pending.variations).filter(group => group[1]?.move === match[1]);
+      groups.sort((a, b) => b[1].depth - a[1].depth);
+      const move = chooseVariation(match[1], pending.legal, groups.length ? Object.values(groups[0]) : []);
+      ui.status('Move calculated');
+      const submitWhenFocused = () => {
+        if (!app.active || app.pending !== pending || app.epoch !== pending.epoch) return;
+        const current = readGame();
+        if (!current || current.key !== pending.key) return invalidate();
+        if (!app.bridgeReady) return stop('Desktop helper disconnected. Restart the helper and reconnect.', true);
+        if (!document.hasFocus()) {
+          ui.status('Waiting for the game tab to gain focus…');
+          app.timer = setTimeout(submitWhenFocused, 500);
+          return;
+        }
+        pending.phase = 'submitted';
+        if (move.length === 5) return stop('Promotion requires manual play; automation stopped.', true);
+        const rect = current.board.getBoundingClientRect();
+        pending.geometry = boardGeometry(current.board);
+        const flipped = !!current.board.closest('.cg-wrap')?.classList.contains('orientation-black');
+        const from = squarePosition(move.slice(0, 2), rect, flipped), to = squarePosition(move.slice(2, 4), rect, flipped);
+        const offsetX = window.screenX + (window.outerWidth - window.innerWidth) / 2;
+        const offsetY = window.screenY + window.outerHeight - window.innerHeight;
+        pending.id = `${pending.epoch}-${Date.now()}`;
+        bridgeRequest('/move', { id: pending.id, speed: mouseSpeed(app.settings.time, readClock()), geometry: [window.screenX, window.screenY, window.outerWidth, window.outerHeight, offsetX + from.x, offsetY + from.y, offsetX + to.x, offsetY + to.y] }, error => { if (error && app.active && app.pending === pending) stop(`Desktop helper: ${error}`, true); });
+        ui.status('Waiting for move confirmation…');
+        app.timer = setTimeout(() => { if (app.pending === pending) stop('Move was not confirmed by Lichess. Check the game and connection.', true); }, 5000);
+      };
+      app.timer = setTimeout(submitWhenFocused, moveBudget(readClock()).delay);
     }
-
-    const uciMove = match[1];
-    const fromSquare = uciMove.substring(0, 2);
-    const toSquare = uciMove.substring(2, 4);
-    const promotion = uciMove.length === 5 ? uciMove[4] : null;
-
-    const delay = parseInt(state.baseDelayMs, 10) + Math.floor(Math.random() * parseInt(state.jitterMs, 10));
-    console.log(`[AutoPlayer] Best move: ${uciMove}. Playing in ${delay}ms...`);
-    updateUIStatus(`Move: ${uciMove} (${delay}ms)`, '#2196f3');
-
-    setTimeout(() => {
-      executeMoveOnBoard(fromSquare, toSquare, promotion);
-      state.isProcessingMove = false;
-    }, delay);
   }
-
-  // Dispatch a move through Chessground's public DOM input surface. Lichess
-  // currently handles mouse events, while some Chessground builds handle
-  // pointer events, so emit both when PointerEvent is available and retain a
-  // MouseEvent-only fallback. The event options intentionally include the
-  // complete primary-button state required by both implementations.
-  function executeMoveOnBoard(from, to, promotion) {
-    const board = document.querySelector('cg-board');
-    if (!board) return false;
-    if (!/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) return false;
-    if (promotion && !/^[qrbn]$/i.test(promotion)) return false;
-
-    const wrap = board.closest('.cg-wrap, cg-container') || board.parentElement;
-    const isFlipped = Boolean(wrap?.classList?.contains('orientation-black')) ||
-      Boolean(board.closest('.orientation-black'));
+  function boardGeometry(board) {
     const rect = board.getBoundingClientRect();
-    if (!rect.width || !rect.height) return false;
-
-    function getSquareCoords(square) {
-      const file = square.charCodeAt(0) - 97;
-      const rank = Number(square[1]) - 1;
-      const fileIndex = isFlipped ? 7 - file : file;
-      const rankIndex = isFlipped ? rank : 7 - rank;
-      const squareWidth = rect.width / 8;
-      const squareHeight = rect.height / 8;
-
-      return {
-        x: rect.left + (fileIndex + 0.5) * squareWidth,
-        y: rect.top + (rankIndex + 0.5) * squareHeight
-      };
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, screenX: window.screenX, screenY: window.screenY, outerWidth: window.outerWidth, outerHeight: window.outerHeight };
+  }
+  function readClock() {
+    const clock = document.querySelector('.round__app .rclock-bottom .time, .round__app .rclock-bottom .rclock__time');
+    return parseClock(clock?.textContent);
+  }
+  function readGame() {
+    const id = gameIdFromPath(location.pathname);
+    const board = document.querySelector('.round__app cg-board');
+    if (!id || !board) return null;
+    const sans = Array.from(document.querySelectorAll('.round__app z7yx, .round__app kwdb, .round__app .moves move'))
+      .map(el => el.childNodes[0]?.textContent.trim()).filter(x => x && x !== '…');
+    const ChessClass = typeof Chess === 'function' ? Chess : window.Chess;
+    const chess = parseMoves(sans, ChessClass);
+    const wrap = board.closest('.cg-wrap');
+    const color = wrap?.classList.contains('orientation-black') ? 'b' : 'w';
+    const ended = !!document.querySelector('.round__app .result-wrap, .round__app .result');
+    const result = document.querySelector('.round__app .result-wrap .result, .round__app .result')?.textContent.trim() || '';
+    return { id, board, chess, color, ended, result, key: id + ':' + chess.fen() };
+  }
+  function getHistory() {
+    const history = GM_getValue('ap_history', []);
+    return Array.isArray(history) ? history.filter(x => x && /^[a-zA-Z0-9]{8}$/.test(x.id)).slice(0, 10) : [];
+  }
+  function recordGame(game) {
+    const id = game.id.slice(0, 8);
+    const outcome = gameOutcome(game.result, game.color);
+    GM_setValue('ap_history', [{ id, color: game.color, outcome, analysis: null }, ...getHistory().filter(x => x.id !== id)].slice(0, 10));
+    renderHistory();
+  }
+  function renderHistory() {
+    const root = document.getElementById('ap-history-list'); if (!root) return;
+    root.replaceChildren(); const games = getHistory();
+    const total = document.createElement('div');
+    total.textContent = games.length ? `${games.filter(x => x.outcome === 'Win').length} wins · ${games.length} games` : 'No recorded games'; root.appendChild(total);
+    const analyzed = games.filter(x => x.analysis);
+    if (analyzed.length) {
+      const summary = document.createElement('div');
+      const sum = key => analyzed.reduce((count, game) => count + game.analysis[key], 0);
+      summary.textContent = `I ${sum('inaccuracy')} · M ${sum('mistake')} · B ${sum('blunder')} (${analyzed.length}/${games.length} analyzed)`;
+      root.appendChild(summary);
     }
-
-    function dispatchBoardInput(type, position) {
-      const isDown = type.endsWith('down');
-      const options = {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        view: window,
-        clientX: position.x,
-        clientY: position.y,
-        button: 0,
-        buttons: 1,
-        pointerId: 1,
-        pointerType: 'mouse',
-        isPrimary: true
-      };
-      const hitTarget = document.elementFromPoint(position.x, position.y);
-      const target = hitTarget && board.contains(hitTarget) ? hitTarget : board;
-
-      // Lichess Chessground uses mousedown/mouseup. PointerEvent is retained
-      // for compatible Chessground builds, but never replaces mouse input.
-      if (typeof window.PointerEvent === 'function') {
-        target.dispatchEvent(new window.PointerEvent(`pointer${isDown ? 'down' : 'up'}`, options));
+    for (const game of games) {
+      const row = document.createElement('div'); row.className = 'ap-history-row';
+      const link = document.createElement('a'); link.href = `https://lichess.org/${game.id}`; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = `${game.outcome} · ${game.id}`; row.appendChild(link);
+      const counts = document.createElement('div'); const a = game.analysis;
+      counts.textContent = a ? `Inaccuracies ${a.inaccuracy} · Mistakes ${a.mistake} · Blunders ${a.blunder}` : 'Analysis unavailable';
+      row.appendChild(counts); root.appendChild(row);
+    }
+  }
+  let refreshingHistory = false;
+  function refreshHistory() {
+    if (refreshingHistory) return;
+    const queue = getHistory().filter(x => !x.analysis); refreshingHistory = true;
+    const next = () => {
+      const game = queue.shift(); if (!game) { refreshingHistory = false; renderHistory(); return; }
+      GM_xmlhttpRequest({ method: 'GET', url: `https://lichess.org/game/export/${game.id}?analysed=true`, headers: { Accept: 'application/json' }, timeout: 10000,
+        onload(response) {
+          try {
+            const data = JSON.parse(response.responseText); const a = analysisCounts(data, game.color);
+            if (response.status === 200 && a) {
+              const history = getHistory(); const saved = history.find(x => x.id === game.id);
+              if (saved) { saved.analysis = a; GM_setValue('ap_history', history); }
+            }
+          } catch {}
+          if (response.status === 429) { refreshingHistory = false; renderHistory(); return; }
+          setTimeout(next, 500);
+        }, onerror() { setTimeout(next, 500); }, ontimeout() { setTimeout(next, 500); }
+      });
+    };
+    next();
+  }
+  function finishGame(game) {
+    const shouldStop = app.stopAfter || (app.settings.limit !== 'infinite' && app.played >= Number(app.settings.limit));
+    const finish = () => {
+      app.analysisJob = null;
+      if (shouldStop) return stop(app.stopAfter ? 'Game finished; matchmaking stopped' : 'Game limit reached');
+      ui.status('Game finished · returning to lobby'); location.assign('/');
+    };
+    if (!app.settings.autoAnalysis) return finish();
+    const job = { id: game.id.slice(0, 8), started: Date.now() }; app.analysisJob = job;
+    const fail = message => { if (app.analysisJob === job && app.active) stop(message, true); };
+    const poll = () => {
+      if (!app.active || app.analysisJob !== job) return;
+      if (Date.now() - job.started > 90000) return fail('Analysis timed out. Refresh analysis later.');
+      GM_xmlhttpRequest({ method: 'GET', url: `https://lichess.org/game/export/${job.id}?analysed=true`, headers: { Accept: 'application/json' }, timeout: 10000,
+        onload(response) {
+          if (!app.active || app.analysisJob !== job) return;
+          if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+          if (response.status === 200) {
+            try {
+              const counts = analysisCounts(JSON.parse(response.responseText), game.color);
+              if (counts) {
+                const history = getHistory(); const item = history.find(x => x.id === job.id);
+                if (item) { item.analysis = counts; GM_setValue('ap_history', history); renderHistory(); }
+                return finish();
+              }
+            } catch {}
+          }
+          setTimeout(poll, 3000);
+        }, onerror() { if (app.analysisJob === job) setTimeout(poll, 3000); }, ontimeout() { if (app.analysisJob === job) setTimeout(poll, 3000); }
+      });
+    };
+    ui.status('Requesting game analysis…');
+    fetch(`/game/${job.id}/request-analysis`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(async response => {
+        if (!app.active || app.analysisJob !== job) return;
+        if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+        const message = response.ok ? '' : await response.text();
+        if (!response.ok && !/already analy[sz]/i.test(message)) return fail(`Analysis request failed (${response.status}).`);
+        ui.status('Waiting for game analysis…'); poll();
+      }).catch(() => fail('Could not request game analysis.'));
+  }
+  function pairingTick(now) {
+    if (location.pathname !== '/') { ui.status('Open the Lichess lobby to pair'); return; }
+    const pool = Array.from(document.querySelectorAll('.lpool[data-id]')).find(el => el.querySelector('.clock')?.textContent.trim() === app.settings.time);
+    if (!pool) return stop(`Quick pairing ${app.settings.time} is unavailable.`, true);
+    if (pool.classList.contains('active')) { app.pairing = { attempts: 0, at: now }; ui.status(`Searching · ${app.settings.time}`); return; }
+    if (app.pairing && now - app.pairing.at < 5000) return;
+    const attempts = (app.pairing?.attempts || 0) + 1;
+    if (attempts > 3) return stop('Pairing was not confirmed. Check the lobby and retry.', true);
+    app.pairing = { attempts, at: now }; pool.click(); ui.status(`Starting pairing · ${app.settings.time}`);
+  }
+  function tick() {
+    if (!app.active || !app.ready || !app.bridgeReady || app.analysisJob) return;
+    try {
+      const game = readGame();
+      if (!game) { if (app.game) { invalidate(); app.game = null; } pairingTick(Date.now()); return; }
+      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
+      if (game.ended) {
+        invalidate();
+        if (!app.finished.has(game.id)) { app.finished.add(game.id); app.played++; recordGame(game); saveSession(true); }
+        finishGame(game); return;
       }
-      target.dispatchEvent(new window.MouseEvent(type, options));
-    }
-
-    function dispatchSquareClick(position) {
-      dispatchBoardInput('mousedown', position);
-      dispatchBoardInput('mouseup', position);
-    }
-
-    function isVisible(element) {
-      const style = window.getComputedStyle(element);
-      const elementRect = element.getBoundingClientRect();
-      return style.display !== 'none' && style.visibility !== 'hidden' &&
-        elementRect.width > 0 && elementRect.height > 0;
-    }
-
-    function choosePromotionPiece(piece) {
-      const pieceNames = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' };
-      const name = pieceNames[piece.toLowerCase()];
-      if (!name) return false;
-
-      const choices = Array.from(document.querySelectorAll(
-        '.promotion-choice, #promotion-choice, [role="dialog"]'
-      )).filter(isVisible);
-      const roots = choices.length ? choices : [document];
-      const selectors = [
-        `piece.${name}`,
-        `piece.${piece.toLowerCase()}`,
-        `[data-piece="${name}"]`,
-        `[data-piece="${piece.toLowerCase()}"]`,
-        `button.${name}`,
-        `button.${piece.toLowerCase()}`
-      ];
-
-      for (const root of roots) {
-        const option = selectors
-          .map(selector => root.matches?.(selector) ? root : root.querySelector(selector))
-          .find(Boolean);
-        if (!option || !isVisible(option)) continue;
-        option.click();
-        return true;
+      if (app.pending && app.pending.key !== game.key) invalidate();
+      if (app.pending?.phase === 'search' && !app.pending.stopRequested) {
+        const remaining = readClock();
+        if (remaining !== null && remaining <= 1500) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
       }
-      return false;
-    }
-
-    const fromPosition = getSquareCoords(from);
-    const toPosition = getSquareCoords(to);
-    dispatchSquareClick(fromPosition);
-
-    // Allow Chessground to render the selected state before the destination
-    // click. Promotion choices are rendered only after that destination click.
-    window.setTimeout(() => {
-      dispatchSquareClick(toPosition);
-      if (!promotion) return;
-
-      const startedAt = Date.now();
-      const selectPromotion = () => {
-        if (choosePromotionPiece(promotion) || Date.now() - startedAt >= 1000) return;
-        window.requestAnimationFrame(selectPromotion);
-      };
-      window.requestAnimationFrame(selectPromotion);
-    }, 120);
-
-    return true;
+      if (app.draining || app.pending || game.chess.turn() !== game.color || app.lastPosition === game.key) return;
+      const legal = game.chess.moves({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''));
+      if (!legal.length) return;
+      app.lastPosition = game.key;
+      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', legal, variations: {} };
+      ui.status('Thinking…');
+      app.worker.postMessage(`position fen ${game.chess.fen()}`);
+      const remaining = readClock();
+      const budget = moveBudget(remaining);
+      if (remaining === null) ui.status('Thinking… clock unavailable');
+      app.worker.postMessage(`go movetime ${budget.search}`);
+      app.timer = setTimeout(() => { if (app.pending?.phase === 'search') stop('Engine search timed out.', true); }, 30000);
+    } catch (error) { stop(`${error.message}. Check the game and retry.`, true); }
   }
-
-  // Parse moves from DOM and convert SAN moves to UCI moves using chess.js
-  function getUciMovesFromDom() {
-    const moveNodes = document.querySelectorAll('l4x kwdb, rm61 kwdb, u8t kwdb, .moves move, kwdb');
-    const sanMoves = Array.from(moveNodes).map(el => el.innerText.trim().replace(/[?!#+]/g, '')).filter(m => m && !m.match(/^\d+\.$/));
-
-    if (sanMoves.length === 0) return [];
-
-    if (typeof window.Chess !== 'function') {
-      return sanMoves;
-    }
-
-    const chess = new window.Chess();
-    const uciMoves = [];
-
-    for (const san of sanMoves) {
-      try {
-        const moveObj = chess.move(san, { sloppy: true });
-        if (moveObj) {
-          uciMoves.push(moveObj.from + moveObj.to + (moveObj.promotion || ''));
-        }
-      } catch (err) {
-        break;
-      }
-    }
-
-    return uciMoves;
+  ui.render(); if (savedSession.active) {
+    const key = GM_getValue('ap_session_key', '');
+    if (key) { document.getElementById('ap-key').value = key; start(true); }
+    else { saveSession(false); ui.status('Re-enter the desktop session key to resume.'); }
   }
-
-  // Board State Observer Loop
-  function observeGameAndTriggerTurn() {
-    if (!state.active || !state.engineReady || state.isProcessingMove) return;
-
-    const board = document.querySelector('cg-board');
-    if (!board) return;
-
-    // Detect game over and auto-seek
-    if (document.querySelector('.follow-up a.user-link, a.button[href*="opponent"], .result')) {
-      handleGameConclusion();
-      return;
-    }
-
-    // Determine color from Chessground container orientation
-    const wrap = document.querySelector('.cg-wrap, cg-container');
-    const isBlack = wrap?.classList?.contains('orientation-black') ||
-                    document.querySelector('coords.files')?.classList.contains('black');
-    const myColor = isBlack ? 'b' : 'w';
-
-    const uciMoves = getUciMovesFromDom();
-    const turnColor = (uciMoves.length % 2 === 0) ? 'w' : 'b';
-
-    if (turnColor === myColor) {
-      const uciStr = uciMoves.join(' ');
-      if (uciStr !== state.lastMovesStr) {
-        state.lastMovesStr = uciStr;
-        state.isProcessingMove = true;
-
-        console.log(`[AutoPlayer] My turn (${myColor}). Requesting move analysis...`);
-        updateUIStatus('Thinking...', '#ff9800');
-
-        state.engine.postMessage('stop');
-        if (uciMoves.length > 0) {
-          state.engine.postMessage(`position startpos moves ${uciStr}`);
-        } else {
-          state.engine.postMessage('position startpos');
-        }
-        state.engine.postMessage(`go depth ${parseInt(state.depth, 10)}`);
-      }
-    }
-  }
-
-  // Game End & Automatic "New Opponent" Re-queueing
-  let gameEndHandled = false;
-  function handleGameConclusion() {
-    if (gameEndHandled || !state.active) return;
-    gameEndHandled = true;
-    state.matchesPlayed++;
-
-    if (state.matchLimit !== 'infinite' && state.matchesPlayed >= parseInt(state.matchLimit, 10)) {
-      state.active = false;
-      GM_setValue('ap_active', false);
-      updateUIStatus(`Match limit (${state.matchLimit}) reached. Stopped.`, '#f44336');
-      updateToggleButton();
-      return;
-    }
-
-    updateUIStatus('Game finished. Auto-seeking New Opponent...', '#9c27b0');
-
-    setTimeout(() => {
-      const newOpponentBtn = document.querySelector('.follow-up a[href*="opponent"], a.button[href*="opponent"], button.new-game');
-      if (newOpponentBtn) {
-        newOpponentBtn.click();
-      } else {
-        // Trigger quick pairing preset (e.g., 1+0 Bullet, 3+0 Blitz)
-        const targetPerf = state.gameType;
-        const pairingBtn = Array.from(document.querySelectorAll('.clock, [data-act], .category button, .quick-pairing button')).find(btn => {
-          const txt = btn.innerText || btn.getAttribute('data-act') || '';
-          return txt.includes(targetPerf);
-        });
-        if (pairingBtn) pairingBtn.click();
-      }
-      gameEndHandled = false;
-    }, 3000);
-  }
-
-  // Floating Control Panel UI
-  function renderControlPanel() {
-    if (document.getElementById('ap-control-panel')) return;
-
-    const panel = document.createElement('div');
-    panel.id = 'ap-control-panel';
-    panel.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      width: 290px;
-      background: #18181c;
-      color: #f0f0f0;
-      border: 1px solid #333;
-      border-radius: 10px;
-      padding: 14px;
-      font-family: system-ui, -apple-system, sans-serif;
-      font-size: 13px;
-      z-index: 999999;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-    `;
-
-    panel.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <strong style="font-size:14px; color:#4caf50;">🤖 Lichess AutoPlayer</strong>
-        <span id="ap-status-badge" style="font-size:11px; padding:2px 6px; border-radius:4px; background:#ff9800; color:#fff;">Initializing...</span>
-      </div>
-
-      <div style="margin-bottom:8px;">
-        <button id="ap-toggle-btn" style="width:100%; padding:8px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; background:${state.active ? '#f44336' : '#4caf50'}; color:#fff;">
-          ${state.active ? 'STOP AUTOPLAYER' : 'START AUTOPLAYER'}
-        </button>
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-        <div>
-          <label>Game Type:</label>
-          <select id="ap-game-type" style="width:100%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;">
-            <option value="1+0" ${state.gameType === '1+0' ? 'selected' : ''}>1+0 Bullet</option>
-            <option value="3+0" ${state.gameType === '3+0' ? 'selected' : ''}>3+0 Blitz</option>
-            <option value="5+3" ${state.gameType === '5+3' ? 'selected' : ''}>5+3 Blitz</option>
-            <option value="10+0" ${state.gameType === '10+0' ? 'selected' : ''}>10+0 Rapid</option>
-          </select>
-        </div>
-        <div>
-          <label>Matches:</label>
-          <select id="ap-match-limit" style="width:100%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;">
-            <option value="infinite" ${state.matchLimit === 'infinite' ? 'selected' : ''}>Infinite</option>
-            <option value="1" ${state.matchLimit === '1' ? 'selected' : ''}>1 Match</option>
-            <option value="5" ${state.matchLimit === '5' ? 'selected' : ''}>5 Matches</option>
-            <option value="10" ${state.matchLimit === '10' ? 'selected' : ''}>10 Matches</option>
-          </select>
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-        <div>
-          <label>Base Delay (ms):</label>
-          <input type="number" id="ap-base-delay" value="${state.baseDelayMs}" step="100" style="width:90%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;" />
-        </div>
-        <div>
-          <label>Jitter (ms):</label>
-          <input type="number" id="ap-jitter" value="${state.jitterMs}" step="50" style="width:90%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;" />
-        </div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-        <div>
-          <label>Depth (1-20):</label>
-          <input type="number" id="ap-depth" value="${state.depth}" min="1" max="20" style="width:90%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;" />
-        </div>
-        <div>
-          <label>ELO Limit:</label>
-          <input type="number" id="ap-elo" value="${state.elo}" step="50" style="width:90%; background:#26262e; color:#fff; border:1px solid #444; border-radius:4px; padding:4px;" />
-        </div>
-      </div>
-
-      <div style="font-size:11px; color:#888; text-align:center; margin-top:6px;">
-        Lichess AutoPlayer
-      </div>
-    `;
-
-    document.body.appendChild(panel);
-
-    // Bind UI Event Handlers
-    document.getElementById('ap-toggle-btn').onclick = () => {
-      state.active = !state.active;
-      GM_setValue('ap_active', state.active);
-      updateToggleButton();
-    };
-
-    document.getElementById('ap-game-type').onchange = (e) => {
-      state.gameType = e.target.value;
-      GM_setValue('ap_gameType', state.gameType);
-    };
-
-    document.getElementById('ap-match-limit').onchange = (e) => {
-      state.matchLimit = e.target.value;
-      GM_setValue('ap_matchLimit', state.matchLimit);
-    };
-
-    document.getElementById('ap-base-delay').onchange = (e) => {
-      state.baseDelayMs = e.target.value;
-      GM_setValue('ap_baseDelayMs', state.baseDelayMs);
-    };
-
-    document.getElementById('ap-jitter').onchange = (e) => {
-      state.jitterMs = e.target.value;
-      GM_setValue('ap_jitterMs', state.jitterMs);
-    };
-
-    document.getElementById('ap-depth').onchange = (e) => {
-      state.depth = e.target.value;
-      GM_setValue('ap_depth', state.depth);
-    };
-
-    document.getElementById('ap-elo').onchange = (e) => {
-      state.elo = e.target.value;
-      GM_setValue('ap_elo', state.elo);
-      configureEngineOptions();
-    };
-  }
-
-  function updateToggleButton() {
-    const btn = document.getElementById('ap-toggle-btn');
-    if (btn) {
-      btn.innerText = state.active ? 'STOP AUTOPLAYER' : 'START AUTOPLAYER';
-      btn.style.background = state.active ? '#f44336' : '#4caf50';
-    }
-  }
-
-  function updateUIStatus(text, bg) {
-    const badge = document.getElementById('ap-status-badge');
-    if (badge) {
-      badge.innerText = text;
-      if (bg) badge.style.background = bg;
-    }
-  }
-
-  // Immediate DOM readiness check & initialization
-  function boot() {
-    renderControlPanel();
-    initEngine();
-    setInterval(observeGameAndTriggerTurn, 500);
-  }
-
-  if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
-  }
+  window.addEventListener('blur', () => { if (app.active && app.pending?.phase === 'submitted') stop('Game window lost focus before the move was confirmed.', true); });
+  for (const event of ['resize', 'scroll']) window.addEventListener(event, () => {
+    if (!app.active || app.pending?.phase !== 'submitted') return;
+    const board = document.querySelector('.round__app cg-board');
+    if (!board || !sameGeometry(app.pending.geometry, boardGeometry(board))) stop('Board geometry changed.', true);
+  }, true);
+  setInterval(tick, 500);
 })();

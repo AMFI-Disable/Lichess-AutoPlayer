@@ -4,7 +4,9 @@
   "description": "Lichess AutoPlayer userscript for licensed bot accounts",
   "main": "server/engine-bridge.js",
   "scripts": {
-    "start": "node server/engine-bridge.js"
+    "start": "node server/engine-bridge.js",
+    "test": "node --test",
+    "mouse": "node server/mouse-bridge.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
