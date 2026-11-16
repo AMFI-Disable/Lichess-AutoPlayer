@@ -1,6 +1,6 @@
-# 🧩 Lichess AutoPlayer - Automated Pairing & Chess Play
-
 <div align="center">
+
+# Lichess AutoPlayer - Automated Pairing & Chess Play
 
 **Browser Userscript Companion For Automated Pairing And Chess Engine Play**  
 *In-page userscript powered by Stockfish WebAssembly, automated quick-pairing, dynamic search budgets, and optional native mouse companion.*
@@ -9,13 +9,13 @@
 [![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
 [![Engine: Stockfish](https://img.shields.io/badge/Engine-Stockfish%2016%20WASM-blue.svg?style=flat-square)](https://stockfishchess.org)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](license)
-[![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#-overview-and-core-value)
+[![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#overview-and-core-value)
 
 </div>
 
 ---
 
-## ⚖️ Educational & Fair-Play Disclaimer
+## Educational & Fair-Play Disclaimer
 
 > [!CAUTION]
 > **IMPORTANT NOTICE & DISCLAIMER**:
@@ -26,13 +26,13 @@
 
 ---
 
-## ⚡ Overview And Core Value
+## Overview And Core Value
 
 Lichess AutoPlayer is a single userscript that experiments with automatic pairing and chess play using Stockfish in a browser worker. The panel provides a time control, game limit, approximate strength slider, connection status, and controls to stop immediately or finish the current game before stopping matchmaking. Controls can be collapsed; Recent games keeps up to ten games recorded after this update. By default the script requests Lichess computer analysis after each game and waits up to 90 seconds before continuing; disable this in Controls. Move-quality counts appear when Lichess analysis is available and can be refreshed. If analysis fails or is rate-limited, the script stops with an error.
 
 ---
 
-## 📦 Installation And Setup
+## Installation And Setup
 
 1. Install Tampermonkey or Violentmonkey.
 2. Create a userscript from the contents of [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
@@ -42,7 +42,7 @@ The script downloads chess.js and Stockfish from cdnjs. An internet connection a
 
 ---
 
-## 🧭 Behavior And Limitations
+## Behavior And Limitations
 
 The script looks for the selected quick-pairing pool in the lobby, then reads a standard game's displayed move list and sends the position to Stockfish. The engine may choose a weaker evaluated legal move, bounded by a score threshold when ahead; shallow analysis cannot guarantee an advantage. The 1000–3000 slider maps to Stockfish skill levels and is not a calibrated Elo rating. The script limits engine search time based on the displayed player clock, with a short fallback when the clock cannot be read. A small reserve allows for mouse movement; the clock can still expire. The session continues across page navigation until stopped or the game limit is reached.
 
@@ -50,7 +50,7 @@ The desktop companion attempts native mouse input; this path has not been verifi
 
 ---
 
-## 🖥️ macOS Desktop Companion (Experimental)
+## macOS Desktop Companion (Experimental)
 
 Install dependencies with `npm install`, then run `npm run mouse` in a terminal. Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
 
@@ -58,12 +58,12 @@ The helper accepts authenticated HTTP requests on localhost through the userscri
 
 ---
 
-## 🧪 Automated Testing And Verification
+## Automated Testing And Verification
 
 Run `npm test` for the local unit tests and `node --check lichess-autoplayer.user.js` for syntax validation. Tests do not establish that live pairing or board input works on Lichess.
 
 ---
 
-## 📄 License And Terms
+## License And Terms
 
 Licensed under the [GNU General Public License v3.0](license). Copyright (c) 2026 AMFI-Disable.

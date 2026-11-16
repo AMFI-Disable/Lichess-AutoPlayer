@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve the project
+about: Report a bug or unexpected behavior
 title: "[BUG] "
 labels: bug
 assignees: AMFI-Disable
@@ -12,21 +12,21 @@ A clear and concise description of what the bug is.
 
 ## Steps To Reproduce
 
-1. Launch application or script.
+1. Open '...'
 2. Navigate to '...'
-3. Click on '....'
-4. Observe error behavior.
+3. Trigger '...'
+4. Observe the issue.
 
 ## Expected Behavior
 
-A clear and concise description of what you expected to happen.
+What you expected to happen.
 
 ## Environment Details
 
-- **Version**: [e.g. 1.0.0]
-- **OS / Browser**: [e.g. macOS Sonoma / Chrome 126]
-- **Runtime / Extension**: [e.g. Tampermonkey / Node.js 20]
+- **Project Version**: [e.g. 1.0.0]
+- **Browser / Runtime**: [e.g. Chrome 130, Firefox 132, Tampermonkey 5.x]
+- **Operating System**: [e.g. macOS 15, Windows 11, Linux]
 
 ## Additional Context
 
-Add any other context, logs, or diagnostic exports here.
+Add console errors, screenshots, or reproduction logs here.
