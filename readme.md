@@ -5,6 +5,7 @@
 **Browser Userscript Companion For Automated Pairing And Chess Engine Play**  
 *In-page userscript powered by Stockfish WebAssembly, automated quick-pairing, dynamic search budgets, and optional native mouse companion.*
 
+[![Website: Live](https://img.shields.io/badge/Website-Live-66BB6A.svg?style=flat-square)](https://amfi-disable.github.io/Lichess-AutoPlayer/)
 [![Browser: Chrome / Firefox / Safari](https://img.shields.io/badge/Browser-Chrome%20%7C%20Firefox%20%7C%20Safari-blue.svg?style=flat-square&logo=googlechrome)](https://google.com/chrome)
 [![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
 [![Engine: Stockfish](https://img.shields.io/badge/Engine-Stockfish%2016%20WASM-blue.svg?style=flat-square)](https://stockfishchess.org)
@@ -37,7 +38,7 @@ Lichess AutoPlayer is a single userscript that experiments with automatic pairin
 ## Installation And Setup
 
 1. Install Tampermonkey or Violentmonkey.
-2. Create a userscript from the contents of [`lichess-autoplayer.user.js`](lichess-autoplayer.user.js).
+2. Open the [userscript source](https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js) and confirm installation in your userscript manager.
 3. Open the Lichess lobby. Select a time control, number of games, and strength, then press **Start**. Press **Stop** to cancel pending automation.
 
 The script downloads chess.js and Stockfish from cdnjs. An internet connection and a browser/userscript manager that permits the worker and WebAssembly download are required. Engine errors are shown in the panel; press Start to retry. The separate local Node bridge is not used by the userscript.
@@ -54,7 +55,14 @@ The desktop companion attempts native mouse input; this path has not been verifi
 
 ## macOS Desktop Companion (Experimental)
 
-Install dependencies with `npm install`, then run `npm run mouse` in a terminal. Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
+On macOS with Node.js and the Xcode Command Line Tools installed, run:
+
+```sh
+npm install -g git+https://github.com/AMFI-Disable/Lichess-AutoPlayer.git
+lichess-autoplayer
+```
+
+From a source checkout, you can also run `npm run mouse`. Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
 
 The helper accepts authenticated HTTP requests on localhost through the userscript manager; the session key is required for every request. It verifies the foreground application, its title, and window bounds before attempting input. It stops on focus loss or failure to confirm a move. This is experimental: browser window geometry, displays, permissions and native input have not been verified end to end. Promotion currently stops automation and must be played manually. Avoid starting a game until the setup has been verified in a permitted test environment.
 
