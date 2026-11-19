@@ -40,6 +40,7 @@ dist/
 *.token
 credentials.json
 token.json
+*secret*
 
 # 2.5 Diagnostics, Logs & Telemetry
 *.log
