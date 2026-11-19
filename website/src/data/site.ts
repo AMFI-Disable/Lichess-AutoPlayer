@@ -5,14 +5,14 @@ export const siteConfig = {
   "accent": "#66BB6A",
   "tagline": "In-page userscript powered by Stockfish WebAssembly with automated quick-pairing, dynamic search budgets, and optional native mouse companion.",
   "primaryCta": {
-    "label": "Setup Guide",
-    "href": "#quick-start"
+    "label": "Install Userscript",
+    "href": "https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js"
   },
   "secondaryCta": {
     "label": "View on GitHub",
     "href": "https://github.com/AMFI-Disable/Lichess-AutoPlayer"
   },
-  "quickCmd": "git clone https://github.com/AMFI-Disable/Lichess-AutoPlayer.git && cd Lichess-AutoPlayer && npm ci && npm test",
+  "quickCmd": "npm install -g git+https://github.com/AMFI-Disable/Lichess-AutoPlayer.git",
   "features": [
     {
       "title": "Stockfish WebAssembly",
@@ -47,12 +47,12 @@ export const siteConfig = {
   ],
   "installCmds": [
     {
-      "label": "Clone & Run Tests",
-      "cmd": "git clone https://github.com/AMFI-Disable/Lichess-AutoPlayer.git && cd Lichess-AutoPlayer && npm ci && npm test"
+      "label": "Install macOS CLI",
+      "cmd": "npm install -g git+https://github.com/AMFI-Disable/Lichess-AutoPlayer.git"
     },
     {
-      "label": "Install Userscript",
-      "cmd": "Open lichess-autoplayer.user.js in Tampermonkey or Violentmonkey"
+      "label": "Start macOS CLI",
+      "cmd": "lichess-autoplayer"
     }
   ],
   "requirements": [
