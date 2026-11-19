@@ -5,6 +5,7 @@
 **Browser Userscript Companion For Automated Pairing And Chess Engine Play**  
 *In-page userscript powered by Stockfish WebAssembly, automated quick-pairing, dynamic search budgets, and optional native mouse companion.*
 
+[![Website: Live](https://img.shields.io/badge/Website-Live-66BB6A.svg?style=flat-square)](https://amfi-disable.github.io/Lichess-AutoPlayer/)
 [![Browser: Chrome / Firefox / Safari](https://img.shields.io/badge/Browser-Chrome%20%7C%20Firefox%20%7C%20Safari-blue.svg?style=flat-square&logo=googlechrome)](https://google.com/chrome)
 [![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
 [![Engine: Stockfish](https://img.shields.io/badge/Engine-Stockfish%2016%20WASM-blue.svg?style=flat-square)](https://stockfishchess.org)
