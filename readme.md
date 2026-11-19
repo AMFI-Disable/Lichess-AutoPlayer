@@ -11,6 +11,8 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](license)
 [![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#overview-and-core-value)
 
+[Changelog](changelog.md) · [Security Policy](security.md) · [GPL-3.0 License](license)
+
 </div>
 
 ---

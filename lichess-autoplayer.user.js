@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
-// @namespace    https://github.com/amfi-disable/Lichess-AutoPlayer
+// @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
 // @version      2.7.0
 // @description  Configurable chess automation for bot testing
+// @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
 // @match        https://lichess.org/*
 // @grant        GM_setValue
