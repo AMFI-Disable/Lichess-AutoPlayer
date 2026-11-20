@@ -1,3 +1,24 @@
+# ==============================================================================
+# SECTION 1: WORKING & PRESERVED FILES (Explicit Whitelists)
+# ==============================================================================
+!a.c.a.s/
+!server/
+!stockfish/
+!test/
+!website/
+!*.user.js
+!package.json
+!package-lock.json
+!readme*.md
+!changelog.md
+!security.md
+!license
+!.gitignore
+!.github/
+
+# ==============================================================================
+# SECTION 2: HIDDEN & IGNORED ARTIFACTS
+# ==============================================================================
 # 2.1 macOS System & Volume Metadata
 .DS_Store
 .DS_Store?
