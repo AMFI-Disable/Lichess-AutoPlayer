@@ -59,5 +59,24 @@ export const siteConfig = {
     "Tampermonkey or Violentmonkey",
     "Chrome / Firefox / Safari",
     "Educational & fair-play disclaimer applies"
+  ],
+  "hubName": "AMFI Hangar",
+  "hubHash": "hangar",
+  "previewTabs": [
+    {
+      "tab": "Stockfish WASM",
+      "title": "In-Tab Engine Search",
+      "body": "Evaluates live FEN positions locally using Stockfish WebAssembly with zero external API calls."
+    },
+    {
+      "tab": "Clock Budgets",
+      "title": "Dynamic Search Depth",
+      "body": "Adapts node depth and think time automatically based on remaining bullet, blitz, or rapid clock."
+    },
+    {
+      "tab": "Native Companion",
+      "title": "Optional Pointer Server",
+      "body": "Delegates move execution to an optional local Node.js mouse companion for realistic pointer curves."
+    }
   ]
 } as const;
