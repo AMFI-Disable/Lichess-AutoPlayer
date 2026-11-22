@@ -100,6 +100,7 @@ app.innerHTML = `
       <p>${escapeHtml(siteConfig.tagline)}</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="${siteConfig.primaryCta.href}">${escapeHtml(siteConfig.primaryCta.label)}</a>
+        <a class="btn btn-secondary" href="./practice.html">Premove Practice</a>
         <a class="btn btn-secondary" href="${siteConfig.secondaryCta.href}" target="_blank" rel="noreferrer">${escapeHtml(siteConfig.secondaryCta.label)}</a>
       </div>
       <div class="cmd-pill">

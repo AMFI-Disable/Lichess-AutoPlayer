@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Premove Practice</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px system-ui; }
+    main { max-width: 34rem; margin: 2rem auto; }
+    .board { display: grid; grid-template-columns: repeat(8, 1fr); }
+    .square { aspect-ratio: 1; border: 0; font-size: clamp(1.3rem, 7vw, 2.6rem); color: #171717; }
+    .light { background: #f0d9b5; }
+    .dark { background: #b58863; }
+    .queued { box-shadow: inset 0 0 0 3px #1672bc; }
+    .selected { box-shadow: inset 0 0 0 3px #a33216; }
+    .square:focus-visible { outline: 3px solid #171717; outline-offset: -5px; }
+    .controls { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Premove Practice</h1>
+    <p>Play White against a local opponent. During Black’s turn, select two squares to queue a move.</p>
+    <p id="status" role="status"></p>
+    <div id="board" class="board" aria-label="Chessboard"></div>
+    <div class="controls">
+      <button id="cancel">Cancel Premove</button>
+      <button id="reset">New Game</button>
+      <label>Promote to <select id="promotion">
+        <option value="q">Queen</option><option value="r">Rook</option>
+        <option value="b">Bishop</option><option value="n">Knight</option>
+      </select></label>
+    </div>
+  </main>
+  <script type="module" src="/src/practice.mjs"></script>
+</body>
+</html>

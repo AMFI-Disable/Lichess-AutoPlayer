@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
     "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "chess.js": "^1.4.0"
   }
 }

@@ -5,7 +5,7 @@
   "main": "server/engine-bridge.js",
   "scripts": {
     "start": "node server/engine-bridge.js",
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
     "mouse": "node server/mouse-bridge.js"
   },
   "dependencies": {

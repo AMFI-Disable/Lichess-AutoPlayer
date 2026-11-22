@@ -68,6 +68,12 @@ The helper accepts authenticated HTTP requests on localhost through the userscri
 
 ---
 
+## Local Premove Practice
+
+Run `npm --prefix website ci` and `npm --prefix website run dev`, then choose **Premove Practice** on the local project site. Play White against a simple computer opponent. During Black’s turn, select a white piece and its destination. The board highlights the queued move and plays it only if it is legal after Black’s reply. Select a different move to replace it, or use **Cancel Premove** to clear it.
+
+Run `npm --prefix website test` for the premove checks.
+
 ## Automated Testing And Verification
 
 Run `npm test` for the local unit tests and `node --check lichess-autoplayer.user.js` for syntax validation. Tests do not establish that live pairing or board input works on Lichess.

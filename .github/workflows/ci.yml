@@ -32,7 +32,11 @@ jobs:
           echo "JavaScript syntax validated."
 
       - name: Run Unit Tests
-        run: npm test
+        run: |
+          npm test
+          npm --prefix website ci
+          npm --prefix website test
+          npm --prefix website run build
 
       - name: Validate YAML Files
         run: |
