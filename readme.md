@@ -18,6 +18,18 @@
 
 ---
 
+## Star History
+
+<a href="https://www.star-history.com/?type=date&repos=amfi-disable%2Flichess-autoplayer">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=amfi-disable%2Flichess-autoplayer&type=date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=amfi-disable%2Flichess-autoplayer&type=date&legend=top-left" />
+    <img alt="AMFI-Disable/Lichess-AutoPlayer Star History Chart" src="https://api.star-history.com/chart?repos=amfi-disable%2Flichess-autoplayer&type=date&legend=top-left" />
+  </picture>
+</a>
+
+---
+
 ## Educational & Fair-Play Disclaimer
 
 > [!CAUTION]
@@ -83,15 +95,3 @@ Run `npm test` for the local unit tests and `node --check lichess-autoplayer.use
 ## License And Terms
 
 Licensed under the [GNU General Public License v3.0](license). Copyright (c) 2026 AMFI-Disable.
-
----
-
-## Star History
-
-<a href="https://www.star-history.com/#AMFI-Disable/Lichess-AutoPlayer&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=AMFI-Disable/Lichess-AutoPlayer&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=AMFI-Disable/Lichess-AutoPlayer&type=Date" />
-    <img alt="AMFI-Disable/Lichess-AutoPlayer Star History Chart" src="https://api.star-history.com/svg?repos=AMFI-Disable/Lichess-AutoPlayer&type=Date" />
-  </picture>
-</a>
