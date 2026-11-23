@@ -14,6 +14,7 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ### Changed
 
+- Restored the Star History chart section and links in `readme.md` and `website/src/main.ts`.
 - Overhauled `lichess-autoplayer.user.js` to version 2.7.0 with clock-dependent dynamic search budgets, engine multi-PV variation selection, automatic game analysis tracking, and hardware mouse event routing.
 - Updated submodule pointer for modern dependencies.
 
