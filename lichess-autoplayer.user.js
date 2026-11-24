@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.1
+// @version      2.7.2
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -119,7 +119,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.1</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.2</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -275,15 +275,16 @@
     const id = gameIdFromPath(location.pathname);
     const board = document.querySelector('.round__app cg-board');
     if (!id || !board) return null;
+    const color = board.closest('.cg-wrap')?.classList.contains('orientation-black') ? 'b' : 'w';
+    const result = document.querySelector('.round__app .result')?.textContent.trim() || '';
+    if (document.querySelector('.round__app .result-wrap, .round__app .result')) {
+      return { id, color, ended: true, result };
+    }
     const sans = Array.from(document.querySelectorAll('.round__app z7yx, .round__app kwdb, .round__app .moves move'))
       .map(el => el.childNodes[0]?.textContent.trim()).filter(x => x && x !== '…');
     const ChessClass = typeof Chess === 'function' ? Chess : window.Chess;
     const chess = parseMoves(sans, ChessClass);
-    const wrap = board.closest('.cg-wrap');
-    const color = wrap?.classList.contains('orientation-black') ? 'b' : 'w';
-    const ended = !!document.querySelector('.round__app .result-wrap, .round__app .result');
-    const result = document.querySelector('.round__app .result-wrap .result, .round__app .result')?.textContent.trim() || '';
-    return { id, board, chess, color, ended, result, key: id + ':' + chess.fen() };
+    return { id, board, chess, color, ended: false, key: id + ':' + chess.fen() };
   }
   function getHistory() {
     const history = GM_getValue('ap_history', []);
@@ -315,68 +316,84 @@
       row.appendChild(counts); root.appendChild(row);
     }
   }
-  let refreshingHistory = false;
-  function refreshHistory() {
-    if (refreshingHistory) return;
-    const queue = getHistory().filter(x => !x.analysis); refreshingHistory = true;
-    const next = () => {
-      const game = queue.shift(); if (!game) { refreshingHistory = false; renderHistory(); return; }
-      GM_xmlhttpRequest({ method: 'GET', url: `https://lichess.org/game/export/${game.id}?analysed=true`, headers: { Accept: 'application/json' }, timeout: 10000,
-        onload(response) {
-          try {
-            const data = JSON.parse(response.responseText); const a = analysisCounts(data, game.color);
-            if (response.status === 200 && a) {
-              const history = getHistory(); const saved = history.find(x => x.id === game.id);
-              if (saved) { saved.analysis = a; GM_setValue('ap_history', history); }
-            }
-          } catch {}
-          if (response.status === 429) { refreshingHistory = false; renderHistory(); return; }
-          setTimeout(next, 500);
-        }, onerror() { setTimeout(next, 500); }, ontimeout() { setTimeout(next, 500); }
-      });
-    };
-    next();
+  async function fetchAnalysis(id, color) {
+    const response = await fetch(`/game/export/${id}?evals=true`, {
+      credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000)
+    });
+    return { status: response.status, counts: response.ok ? analysisCounts(await response.json(), color) : null };
   }
-  function finishGame(game) {
-    const shouldStop = app.stopAfter || (app.settings.limit !== 'infinite' && app.played >= Number(app.settings.limit));
+  function saveAnalysis(id, counts) {
+    const history = getHistory();
+    const item = history.find(x => x.id === id);
+    if (item) { item.analysis = counts; GM_setValue('ap_history', history); renderHistory(); }
+  }
+  const waitForAnalysis = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  let refreshingHistory = false;
+  async function refreshHistory() {
+    if (refreshingHistory || app.analysisJob) return;
+    refreshingHistory = true;
+    try {
+      for (const game of getHistory().filter(x => !x.analysis)) {
+        if (app.analysisJob) break;
+        try {
+          const { status, counts } = await fetchAnalysis(game.id, game.color);
+          if (counts) saveAnalysis(game.id, counts);
+          if (status === 429) break;
+        } catch {}
+        await waitForAnalysis(1000);
+      }
+    } finally {
+      refreshingHistory = false;
+      renderHistory();
+    }
+  }
+  async function finishGame(game) {
     const finish = () => {
       app.analysisJob = null;
-      if (shouldStop) return stop(app.stopAfter ? 'Game finished; matchmaking stopped' : 'Game limit reached');
+      if (app.stopAfter) return stop('Game finished; matchmaking stopped');
+      if (app.settings.limit !== 'infinite' && app.played >= Number(app.settings.limit)) return stop('Game limit reached');
       ui.status('Game finished · returning to lobby'); location.assign('/');
     };
     if (!app.settings.autoAnalysis) return finish();
-    const job = { id: game.id.slice(0, 8), started: Date.now() }; app.analysisJob = job;
-    const fail = message => { if (app.analysisJob === job && app.active) stop(message, true); };
-    const poll = () => {
-      if (!app.active || app.analysisJob !== job) return;
-      if (Date.now() - job.started > 90000) return fail('Analysis timed out. Refresh analysis later.');
-      GM_xmlhttpRequest({ method: 'GET', url: `https://lichess.org/game/export/${job.id}?analysed=true`, headers: { Accept: 'application/json' }, timeout: 10000,
-        onload(response) {
-          if (!app.active || app.analysisJob !== job) return;
-          if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
-          if (response.status === 200) {
-            try {
-              const counts = analysisCounts(JSON.parse(response.responseText), game.color);
-              if (counts) {
-                const history = getHistory(); const item = history.find(x => x.id === job.id);
-                if (item) { item.analysis = counts; GM_setValue('ap_history', history); renderHistory(); }
-                return finish();
-              }
-            } catch {}
-          }
-          setTimeout(poll, 3000);
-        }, onerror() { if (app.analysisJob === job) setTimeout(poll, 3000); }, ontimeout() { if (app.analysisJob === job) setTimeout(poll, 3000); }
+    const job = { id: game.id.slice(0, 8) };
+    app.analysisJob = job;
+    const current = () => app.active && app.analysisJob === job;
+    const fail = message => { if (current()) stop(message, true); };
+    try {
+      ui.status('Game finished · preparing analysis…');
+      await waitForAnalysis(1500);
+      if (!current()) return;
+      ui.status('Requesting game analysis…');
+      const response = await fetch(`/game/${job.id}/request-analysis`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        signal: AbortSignal.timeout(10000)
       });
-    };
-    ui.status('Requesting game analysis…');
-    fetch(`/game/${job.id}/request-analysis`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(async response => {
-        if (!app.active || app.analysisJob !== job) return;
-        if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
-        const message = response.ok ? '' : await response.text();
-        if (!response.ok && !/already analy[sz]/i.test(message)) return fail(`Analysis request failed (${response.status}).`);
-        ui.status('Waiting for game analysis…'); poll();
-      }).catch(() => fail('Could not request game analysis.'));
+      const message = response.ok ? '' : (await response.text()).trim();
+      if (!current()) return;
+      if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+      if (response.redirected || response.status === 401 || response.status === 403) {
+        return fail('Lichess did not authorize the analysis request. Check that you are signed in.');
+      }
+      if (!response.ok && !/already analy[sz]/i.test(message)) {
+        return fail(`Analysis request rejected (${response.status})${message && !message.includes('<') ? ': ' + message.slice(0, 160) : '.'}`);
+      }
+    } catch {
+      return fail('Could not request game analysis.');
+    }
+    ui.status('Waiting for game analysis…');
+    const deadline = Date.now() + 90000;
+    while (current() && Date.now() < deadline) {
+      try {
+        const { status, counts } = await fetchAnalysis(job.id, game.color);
+        if (!current()) return;
+        if (status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+        if (counts) { saveAnalysis(job.id, counts); return finish(); }
+      } catch {}
+      if (current()) await waitForAnalysis(3000);
+    }
+    fail('Analysis timed out. Refresh analysis later.');
   }
   function pairingTick(now) {
     if (location.pathname !== '/') { ui.status('Open the Lichess lobby to pair'); return; }
@@ -389,16 +406,18 @@
     app.pairing = { attempts, at: now }; pool.click(); ui.status(`Starting pairing · ${app.settings.time}`);
   }
   function tick() {
-    if (!app.active || !app.ready || !app.bridgeReady || app.analysisJob) return;
+    if (!app.active || app.analysisJob) return;
     try {
       const game = readGame();
+      if (!game && (!app.ready || !app.bridgeReady)) return;
       if (!game) { if (app.game) { invalidate(); app.game = null; } pairingTick(Date.now()); return; }
-      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
       if (game.ended) {
         invalidate();
         if (!app.finished.has(game.id)) { app.finished.add(game.id); app.played++; recordGame(game); saveSession(true); }
         finishGame(game); return;
       }
+      if (!app.ready || !app.bridgeReady) return;
+      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
       if (app.pending && app.pending.key !== game.key) invalidate();
       if (app.pending?.phase === 'search' && !app.pending.stopRequested) {
         const remaining = readClock();
