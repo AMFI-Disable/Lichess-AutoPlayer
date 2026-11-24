@@ -4,7 +4,17 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
-## [Unreleased]
+## [2.7.1] - AutoPlayer Patch Release
+
+The userscript is v2.7.1 and the macOS companion package is v1.0.1.
+
+- Includes browser Stockfish, clock-aware move timing, quick pairing, session stop controls, and post-game analysis.
+- Includes the installable macOS mouse companion and its authenticated local connection. The project owner confirmed the setup works on their machine.
+- Adds local Premove Practice on the project site. Its single-move queue supports replacement, cancellation, and promotion.
+
+---
+
+## [2.7.0] - Clock-Aware Play And Desktop Companion
 
 ### Added
 

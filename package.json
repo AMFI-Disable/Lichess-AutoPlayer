@@ -1,6 +1,6 @@
 {
   "name": "lichess-autoplayer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lichess AutoPlayer userscript for licensed bot accounts",
   "main": "server/engine-bridge.js",
   "scripts": {

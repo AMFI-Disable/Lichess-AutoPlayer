@@ -49,11 +49,13 @@ Lichess AutoPlayer is a single userscript that experiments with automatic pairin
 
 ## Installation And Setup
 
+Current versions: userscript **2.7.1**, macOS companion **1.0.1**.
+
 1. Install Tampermonkey or Violentmonkey.
 2. Open the [userscript source](https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js) and confirm installation in your userscript manager.
 3. Open the Lichess lobby. Select a time control, number of games, and strength, then press **Start**. Press **Stop** to cancel pending automation.
 
-The script downloads chess.js and Stockfish from cdnjs. An internet connection and a browser/userscript manager that permits the worker and WebAssembly download are required. Engine errors are shown in the panel; press Start to retry. The separate local Node bridge is not used by the userscript.
+The script downloads chess.js and Stockfish from cdnjs. An internet connection and a browser/userscript manager that permits the worker and WebAssembly download are required. Engine errors are shown in the panel; press Start to retry. The separate Node engine bridge is not used by the userscript. The macOS mouse companion below handles native input.
 
 ---
 
