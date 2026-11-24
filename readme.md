@@ -49,7 +49,7 @@ Lichess AutoPlayer is a single userscript that experiments with automatic pairin
 
 ## Installation And Setup
 
-Current versions: userscript **2.7.2**, macOS companion **1.0.1**.
+Current versions: userscript **2.7.3**, macOS companion **1.0.1**.
 
 1. Install Tampermonkey or Violentmonkey.
 2. Open the [userscript source](https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js) and confirm installation in your userscript manager.

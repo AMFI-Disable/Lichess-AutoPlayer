@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.2
+// @version      2.7.3
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -41,10 +41,11 @@
     if (!match || Number(match[2]) >= 60) return null;
     return (Number(match[1]) * 60 + Number(match[2]) + Number('0.' + (match[3] || '0'))) * 1000;
   }
-  function moveBudget(remaining) {
-    if (remaining === null) return { search: 500, delay: 150 };
-    const available = Math.max(0, remaining - 1200);
-    return { search: Math.max(50, Math.min(2000, Math.floor(available / 35))), delay: remaining > 15000 ? 250 : remaining > 5000 ? 100 : 0 };
+  function moveBudget(remaining, opening = false) {
+    const available = remaining === null ? 0 : Math.max(0, remaining - 1200);
+    const search = remaining === null ? 500 : Math.max(50, Math.min(2000, Math.floor(available / 35)));
+    const delay = remaining === null ? 150 : remaining > 15000 ? 250 : remaining > 5000 ? 100 : 0;
+    return opening ? { search: Math.max(50, Math.floor(search * 0.8)), delay: Math.max(0, delay - 75) } : { search, delay };
   }
   function mouseSpeed(timeControl, remaining) {
     if (remaining !== null && remaining < 15000) return 'quick';
@@ -119,7 +120,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.2</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.3</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -260,7 +261,7 @@
         ui.status('Waiting for move confirmation…');
         app.timer = setTimeout(() => { if (app.pending === pending) stop('Move was not confirmed by Lichess. Check the game and connection.', true); }, 5000);
       };
-      app.timer = setTimeout(submitWhenFocused, moveBudget(readClock()).delay);
+      app.timer = setTimeout(submitWhenFocused, moveBudget(readClock(), pending.opening).delay);
     }
   }
   function boardGeometry(board) {
@@ -284,7 +285,7 @@
       .map(el => el.childNodes[0]?.textContent.trim()).filter(x => x && x !== '…');
     const ChessClass = typeof Chess === 'function' ? Chess : window.Chess;
     const chess = parseMoves(sans, ChessClass);
-    return { id, board, chess, color, ended: false, key: id + ':' + chess.fen() };
+    return { id, board, chess, color, ended: false, opening: sans.length < 6, key: id + ':' + chess.fen() };
   }
   function getHistory() {
     const history = GM_getValue('ap_history', []);
@@ -427,11 +428,11 @@
       const legal = game.chess.moves({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''));
       if (!legal.length) return;
       app.lastPosition = game.key;
-      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', legal, variations: {} };
+      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', opening: game.opening, legal, variations: {} };
       ui.status('Thinking…');
       app.worker.postMessage(`position fen ${game.chess.fen()}`);
       const remaining = readClock();
-      const budget = moveBudget(remaining);
+      const budget = moveBudget(remaining, game.opening);
       if (remaining === null) ui.status('Thinking… clock unavailable');
       app.worker.postMessage(`go movetime ${budget.search}`);
       app.timer = setTimeout(() => { if (app.pending?.phase === 'search') stop('Engine search timed out.', true); }, 30000);

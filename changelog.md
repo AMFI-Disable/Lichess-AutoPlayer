@@ -4,6 +4,12 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [2.7.3] - Opening Move Timing
+
+- Shorten engine thinking time and the wait before submitting moves during the first three moves per side.
+
+---
+
 ## [2.7.2] - Post-Game Analysis
 
 - Detect finished games before parsing the move list and retrieve analysis through the signed-in Lichess session without reusing cached exports.

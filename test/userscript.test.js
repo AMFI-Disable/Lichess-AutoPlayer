@@ -26,6 +26,12 @@ test('search budget shortens as time runs low and remains bounded without a cloc
   assert.equal(moveBudget(3000).delay, 0);
   assert.ok(moveBudget(3000).search < moveBudget(12000).search);
 });
+test('opening moves have a shorter search and submission delay', () => {
+  assert.deepEqual(moveBudget(180000, true), { search: 1600, delay: 175 });
+  assert.deepEqual(moveBudget(null, true), { search: 400, delay: 75 });
+  assert.deepEqual(moveBudget(0, true), { search: 50, delay: 0 });
+});
+
 test('board coordinates account for orientation', () => {
   const rect = { left: 10, top: 20, width: 800, height: 800 };
   assert.deepEqual(squarePosition('a1', rect, false), { x: 60, y: 770 });
