@@ -205,28 +205,32 @@
     if (!/^[a-f0-9]{48}$/.test(key)) { ui.status('Enter the desktop session key first.', true); return; }
     GM_setValue('ap_session_key', key);
     app.active = true; if (!resume) { app.played = 0; app.finished.clear(); app.stopAfter = false; } saveSession(true); app.game = null;
-    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Connecting to engine…');
+    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Downloading engine…');
     const epoch = ++app.epoch;
     bridgeRequest('/status', {}, (error) => {
       if (!app.active || app.epoch !== epoch) return;
       if (error) return stop(`Desktop helper: ${error}`, true);
       app.bridgeReady = true;
     });
-    app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop('Engine timed out. Press Start to retry.', true); }, 20000);
+    app.stage = 'downloading the engine';
+    app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop(`Engine timed out while ${app.stage || 'starting'}. Check that cdnjs.cloudflare.com is reachable and that your userscript manager allows Web Workers on lichess.org, then press Start to retry.`, true); }, 20000);
     GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js',
       onload(response) {
         if (!app.active || app.epoch !== epoch) return;
-        if (response.status !== 200) return stop(`Engine download failed (${response.status}). Press Start to retry.`, true);
+        if (response.status !== 200) return stop(`Engine download failed (HTTP ${response.status}) from ${ENGINE_URL}. Press Start to retry.`, true);
         try {
           // Stockfish's worker resolves its wasm relative to its own blob URL otherwise.
           const code = response.responseText.replace('locateFile:function(file){return file}', `locateFile:function(file){return '${ENGINE_URL}'+file}`);
+          app.stage = 'starting the engine worker';
           const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
           const worker = new Worker(url); URL.revokeObjectURL(url); app.worker = worker;
-          worker.onerror = () => stop('Engine worker failed. Press Start to retry.', true);
+          worker.onerror = event => stop(`Engine worker failed${event && event.message ? `: ${event.message}` : ' to start (the page may block workers or the engine download was invalid)'}. Press Start to retry.`, true);
           worker.onmessage = event => engineMessage(String(event.data));
+          app.stage = 'waiting for the engine to answer the UCI handshake';
           worker.postMessage('uci');
         } catch (error) { stop(`Engine failed: ${error.message}`, true); }
-      }, onerror() { if (app.active && app.epoch === epoch) stop('Engine download failed. Press Start to retry.', true); }
+      }, onerror() { if (app.active && app.epoch === epoch) stop(`Engine download failed: could not reach ${ENGINE_URL}. Check your connection and the userscript manager's network permissions, then press Start to retry.`, true); },
+      ontimeout() { if (app.active && app.epoch === epoch) stop('Engine download timed out. Press Start to retry.', true); }, timeout: 15000
     });
   }
   function engineMessage(line) {

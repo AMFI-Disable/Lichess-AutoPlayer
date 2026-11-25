@@ -94,7 +94,9 @@ Run `npm test` for the local unit tests and `node --check lichess-autoplayer.use
 
 ### Engine Bridge Setup
 
-To run the local WebSocket Stockfish bridge (`npm start`), install dependencies with `npm install`. The bridge automatically resolves `STOCKFISH_PATH`, a locally compiled `stockfish/src/stockfish` binary, system/Homebrew `stockfish`, or the bundled `stockfish` npm package.
+To run the local WebSocket Stockfish bridge (`npm start`), install dependencies with `npm install`. The bridge automatically resolves `STOCKFISH_PATH`, a locally compiled `stockfish/src/stockfish` binary, system/Homebrew `stockfish`, or the bundled lite single-threaded `stockfish` npm build, and verifies the UCI handshake before it starts listening. Run `npm run check:engine` to diagnose a setup: it prints the engine in use and its start-up time, or the exact failing stage (missing file, permissions, early exit, or timeout).
+
+If the userscript reports an engine error, the message names the stage that failed: downloading the engine from cdnjs, starting the Web Worker, or waiting for the UCI handshake. These usually mean cdnjs.cloudflare.com is unreachable or the userscript manager blocks workers on lichess.org.
 
 ---
 

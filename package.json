@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server/engine-bridge.js",
     "test": "node --test test/*.test.js",
-    "mouse": "node server/mouse-bridge.js"
+    "mouse": "node server/mouse-bridge.js",
+    "check:engine": "node server/engine-bridge.js --check"
   },
   "dependencies": {
     "stockfish": "^19.0.1",
