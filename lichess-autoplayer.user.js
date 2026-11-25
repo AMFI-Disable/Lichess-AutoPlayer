@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.3
+// @version      2.7.4
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -46,6 +46,23 @@
     const search = remaining === null ? 500 : Math.max(50, Math.min(2000, Math.floor(available / 35)));
     const delay = remaining === null ? 150 : remaining > 15000 ? 250 : remaining > 5000 ? 100 : 0;
     return opening ? { search: Math.max(50, Math.floor(search * 0.8)), delay: Math.max(0, delay - 75) } : { search, delay };
+  }
+  function opponentThinkTime(previous, current, timeControl) {
+    if (!previous || previous.ply + 2 !== current.ply || previous.clock === null || current.clock === null) return null;
+    const increment = Number(timeControl.split('+')[1]) * 1000;
+    const elapsed = previous.clock + increment - current.clock;
+    return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
+  }
+  function responsiveBudget(remaining, opening, opponentMs, submitMs) {
+    const normal = moveBudget(remaining, opening);
+    const reserve = Math.max(1500, submitMs + 750);
+    const clockCap = remaining === null ? normal.search : Math.floor(Math.max(0, remaining - reserve) / 35);
+    // The engine searches to whatever depth fits the time left after input.
+    const target = opponentMs === null ? normal.search : opponentMs - 100 - submitMs - 500;
+    return {
+      search: Math.max(50, Math.floor(Math.min(normal.search, clockCap, target))),
+      delay: opponentMs === null && (remaining === null || remaining > 15000) ? normal.delay : 0
+    };
   }
   function mouseSpeed(timeControl, remaining) {
     if (remaining !== null && remaining < 15000) return 'quick';
@@ -99,7 +116,7 @@
     return chess;
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath };
+    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath };
     return;
   }
 
@@ -107,7 +124,7 @@
   const app = {
     settings: normalizeSettings(GM_getValue('ap_settings', {})), active: false,
     worker: null, ready: false, epoch: 0, timer: null, timeout: null, game: null,
-    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
+    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, opponentClock: null, submitMs: 1800, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
   };
   const ui = {
     status(message, error = false) {
@@ -120,7 +137,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.3</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.4</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -249,6 +266,7 @@
           return;
         }
         pending.phase = 'submitted';
+        pending.submittedAt = performance.now();
         if (move.length === 5) return stop('Promotion requires manual play; automation stopped.', true);
         const rect = current.board.getBoundingClientRect();
         pending.geometry = boardGeometry(current.board);
@@ -261,15 +279,15 @@
         ui.status('Waiting for move confirmation…');
         app.timer = setTimeout(() => { if (app.pending === pending) stop('Move was not confirmed by Lichess. Check the game and connection.', true); }, 5000);
       };
-      app.timer = setTimeout(submitWhenFocused, moveBudget(readClock(), pending.opening).delay);
+      app.timer = setTimeout(submitWhenFocused, pending.delay);
     }
   }
   function boardGeometry(board) {
     const rect = board.getBoundingClientRect();
     return { left: rect.left, top: rect.top, width: rect.width, height: rect.height, screenX: window.screenX, screenY: window.screenY, outerWidth: window.outerWidth, outerHeight: window.outerHeight };
   }
-  function readClock() {
-    const clock = document.querySelector('.round__app .rclock-bottom .time, .round__app .rclock-bottom .rclock__time');
+  function readClock(side = 'bottom') {
+    const clock = document.querySelector(`.round__app .rclock-${side} .time, .round__app .rclock-${side} .rclock__time`);
     return parseClock(clock?.textContent);
   }
   function readGame() {
@@ -285,7 +303,7 @@
       .map(el => el.childNodes[0]?.textContent.trim()).filter(x => x && x !== '…');
     const ChessClass = typeof Chess === 'function' ? Chess : window.Chess;
     const chess = parseMoves(sans, ChessClass);
-    return { id, board, chess, color, ended: false, opening: sans.length < 6, key: id + ':' + chess.fen() };
+    return { id, board, chess, color, ended: false, ply: sans.length, opening: sans.length < 6, key: id + ':' + chess.fen() };
   }
   function getHistory() {
     const history = GM_getValue('ap_history', []);
@@ -418,21 +436,30 @@
         finishGame(game); return;
       }
       if (!app.ready || !app.bridgeReady) return;
-      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
-      if (app.pending && app.pending.key !== game.key) invalidate();
+      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.opponentClock = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
+      if (app.pending && app.pending.key !== game.key) {
+        if (app.pending.phase === 'submitted' && game.ply === app.pending.ply + 1) {
+          const elapsed = performance.now() - app.pending.submittedAt;
+          app.submitMs = Math.max(700, app.submitMs * 0.5 + elapsed * 0.5);
+        }
+        invalidate();
+      }
       if (app.pending?.phase === 'search' && !app.pending.stopRequested) {
         const remaining = readClock();
-        if (remaining !== null && remaining <= 1500) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
+        if (remaining !== null && remaining <= Math.max(1500, app.submitMs + 500)) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
       }
       if (app.draining || app.pending || game.chess.turn() !== game.color || app.lastPosition === game.key) return;
       const legal = game.chess.moves({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''));
       if (!legal.length) return;
       app.lastPosition = game.key;
-      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', opening: game.opening, legal, variations: {} };
+      const sample = { ply: game.ply, clock: readClock('top') };
+      const opponentMs = opponentThinkTime(app.opponentClock, sample, app.settings.time);
+      app.opponentClock = sample;
+      const remaining = readClock();
+      const budget = responsiveBudget(remaining, game.opening, opponentMs, app.submitMs);
+      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', ply: game.ply, delay: budget.delay, legal, variations: {} };
       ui.status('Thinking…');
       app.worker.postMessage(`position fen ${game.chess.fen()}`);
-      const remaining = readClock();
-      const budget = moveBudget(remaining, game.opening);
       if (remaining === null) ui.status('Thinking… clock unavailable');
       app.worker.postMessage(`go movetime ${budget.search}`);
       app.timer = setTimeout(() => { if (app.pending?.phase === 'search') stop('Engine search timed out.', true); }, 30000);

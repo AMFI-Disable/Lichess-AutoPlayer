@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSettings, skillFor, parseClock, moveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath } = require('../lichess-autoplayer.user.js');
+const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath } = require('../lichess-autoplayer.user.js');
 
 test('rating slider settings are validated and old presets migrate', () => {
   assert.deepEqual(normalizeSettings({ time: 'bad', limit: -1, strength: 'bad' }), { time: '3+0', limit: '1', strength: 1500, autoAnalysis: true });
@@ -93,4 +93,17 @@ test('game outcomes and analysis use the player color and preserve unavailable d
   assert.deepEqual(analysisCounts(data, 'w'), { inaccuracy: 1, mistake: 2, blunder: 3 });
   assert.equal(analysisCounts(data, 'b'), null);
   assert.equal(analysisCounts({ players: { white: { analysis: { inaccuracy: 1 } } } }, 'w'), null);
+});
+
+test('opponent clock samples account for increment and skip missed turns', () => {
+  assert.equal(opponentThinkTime({ ply: 2, clock: 15000 }, { ply: 4, clock: 16000 }, '5+3'), 2000);
+  assert.equal(opponentThinkTime({ ply: 2, clock: 15000 }, { ply: 6, clock: 14000 }, '3+0'), null);
+  assert.equal(opponentThinkTime({ ply: 2, clock: 15000 }, { ply: 4, clock: null }, '3+0'), null);
+});
+
+test('responsive search accounts for submission time and preserves the clock cap', () => {
+  assert.deepEqual(responsiveBudget(180000, false, 3000, 1200), { search: 1200, delay: 0 });
+  assert.deepEqual(responsiveBudget(180000, false, 300, 1200), { search: 50, delay: 0 });
+  assert.deepEqual(responsiveBudget(2200, false, 5000, 1600), { search: 50, delay: 0 });
+  assert.deepEqual(responsiveBudget(null, false, null, 1200), { search: 500, delay: 150 });
 });

@@ -4,6 +4,12 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [2.7.4] - Clock-Aware Reply Timing
+
+- Use the opponent's last clock spend to set a reply target, with reserves for the desktop helper and low clocks.
+
+---
+
 ## [2.7.3] - Opening Move Timing
 
 - Shorten engine thinking time and the wait before submitting moves during the first three moves per side.
