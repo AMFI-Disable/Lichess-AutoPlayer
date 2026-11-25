@@ -92,6 +92,10 @@ Run `npm --prefix website test` for the premove checks.
 
 Run `npm test` for the local unit tests and `node --check lichess-autoplayer.user.js` for syntax validation. Tests do not establish that live pairing or board input works on Lichess.
 
+### Engine Bridge Setup
+
+To run the local WebSocket Stockfish bridge (`npm start`), install dependencies with `npm install`. The bridge automatically resolves `STOCKFISH_PATH`, a locally compiled `stockfish/src/stockfish` binary, system/Homebrew `stockfish`, or the bundled `stockfish` npm package.
+
 ---
 
 ## License And Terms

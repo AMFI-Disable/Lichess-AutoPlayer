@@ -9,6 +9,7 @@
     "mouse": "node server/mouse-bridge.js"
   },
   "dependencies": {
+    "stockfish": "^19.0.1",
     "ws": "^8.18.0"
   },
   "keywords": [
