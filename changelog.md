@@ -12,6 +12,13 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [2.7.5] - Desktop Connection Startup
+
+- Make the desktop helper the default for `npm start`. The separate Stockfish bridge is available through `npm run engine`.
+- Check desktop helper readiness before loading the browser engine and show how to recover from missing keys, timeouts, and occupied ports.
+
+---
+
 ## [2.7.4] - Clock-Aware Reply Timing
 
 - Use the opponent's last clock spend to set a reply target, with reserves for the desktop helper and low clocks.

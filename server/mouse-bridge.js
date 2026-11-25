@@ -41,6 +41,17 @@ function createBridge(secret, launch = (geometry, speed) => spawn('/usr/bin/swif
 if (require.main === module) {
   const secret = randomBytes(24).toString('hex');
   const server = createBridge(secret);
-  server.listen(17349, '127.0.0.1', () => console.log(`Mouse bridge listening on 127.0.0.1:17349\nSession key: ${secret}\nPaste this key into the AutoPlayer panel. Press Ctrl+C to stop.`));
+  const address = '127.0.0.1';
+  const port = 17349;
+  console.log(`Starting desktop mouse helper on ${address}:${port}…`);
+  server.once('error', error => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Use the session key from the running mouse helper, or stop that helper and run npm run mouse again.`);
+    } else {
+      console.error(`Could not start the desktop mouse helper: ${error.message}`);
+    }
+    process.exitCode = 1;
+  });
+  server.listen(port, address, () => console.log(`Desktop mouse helper ready on ${address}:${port}\nSession key: ${secret}\nPaste this key into the AutoPlayer panel. Press Ctrl+C to stop.`));
 }
 module.exports = { createBridge };

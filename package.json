@@ -1,10 +1,11 @@
 {
   "name": "lichess-autoplayer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Lichess AutoPlayer userscript for licensed bot accounts",
   "main": "server/engine-bridge.js",
   "scripts": {
-    "start": "node server/engine-bridge.js",
+    "start": "npm run mouse",
+    "engine": "node server/engine-bridge.js",
     "test": "node --test test/*.test.js",
     "mouse": "node server/mouse-bridge.js",
     "check:engine": "node server/engine-bridge.js --check"

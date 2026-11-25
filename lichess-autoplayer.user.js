@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.4
+// @version      2.7.5
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -137,7 +137,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.4</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.5</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -197,21 +197,39 @@
       headers: { 'Content-Type': 'application/json', 'X-Session-Key': GM_getValue('ap_session_key', '') },
       data: JSON.stringify(data), timeout: 12000,
       onload: response => { let body = {}; try { body = JSON.parse(response.responseText); } catch {} done(response.status === 200 ? null : (body.error || `HTTP ${response.status}`), body); },
-      onerror: () => done('Connection failed'), ontimeout: () => done('Connection timed out')
+      onerror: () => done('Cannot reach 127.0.0.1:17349. Run npm run mouse and leave the terminal open.'),
+      ontimeout: () => done('Connection timed out. Check that the mouse helper is running and retry.'),
+      onabort: () => done('Connection cancelled. Press Start to retry.')
     });
   }
   function start(resume = false) {
-    const key = document.getElementById('ap-key').value;
-    if (!/^[a-f0-9]{48}$/.test(key)) { ui.status('Enter the desktop session key first.', true); return; }
+    const key = document.getElementById('ap-key').value.trim();
+    if (!/^[a-f0-9]{48}$/.test(key)) { ui.status('Run npm run mouse and paste the 48-character session key from the terminal.', true); return; }
     GM_setValue('ap_session_key', key);
     app.active = true; if (!resume) { app.played = 0; app.finished.clear(); app.stopAfter = false; } saveSession(true); app.game = null;
-    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Downloading engine…');
+    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Connecting to desktop helper…');
     const epoch = ++app.epoch;
-    bridgeRequest('/status', {}, (error) => {
-      if (!app.active || app.epoch !== epoch) return;
-      if (error) return stop(`Desktop helper: ${error}`, true);
-      app.bridgeReady = true;
-    });
+    app.bridgeTimeout = setTimeout(() => {
+      if (app.active && app.epoch === epoch && !app.bridgeReady) {
+        stop('Desktop helper did not respond. Run npm run mouse and press Start to retry.', true);
+      }
+    }, 12500);
+    try {
+      bridgeRequest('/status', {}, (error, body) => {
+        if (!app.active || app.epoch !== epoch) return;
+        clearTimeout(app.bridgeTimeout);
+        if (error === 'Invalid session key') return stop('Paste the current session key from the running mouse helper and press Start.', true);
+        if (error) return stop(`Desktop helper: ${error}`, true);
+        if (body?.ready !== true) return stop('Unexpected response on port 17349. Check that the desktop mouse helper is running.', true);
+        app.bridgeReady = true;
+        startEngine(epoch);
+      });
+    } catch (error) {
+      stop(`Desktop connection could not start: ${error.message}`, true);
+    }
+  }
+  function startEngine(epoch) {
+    ui.status('Desktop helper connected · downloading engine…');
     app.stage = 'downloading the engine';
     app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop(`Engine timed out while ${app.stage || 'starting'}. Check that cdnjs.cloudflare.com is reachable and that your userscript manager allows Web Workers on lichess.org, then press Start to retry.`, true); }, 20000);
     GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js',
