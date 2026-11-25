@@ -1,25 +1,7 @@
-# ==============================================================================
-# SECTION 1: WORKING & PRESERVED FILES (Explicit Whitelists)
-# ==============================================================================
-!a.c.a.s/
-!server/
-!stockfish/
-!test/
-!website/
-!*.user.js
-!package.json
-!package-lock.json
-!readme*.md
-!changelog.md
-!security.md
-!license
-!.gitignore
-!.github/
+# Local Checkouts
+/a.c.a.s/
 
-# ==============================================================================
-# SECTION 2: HIDDEN & IGNORED ARTIFACTS
-# ==============================================================================
-# 2.1 macOS System & Volume Metadata
+# macOS System & Volume Metadata
 .DS_Store
 .DS_Store?
 .ds_store
@@ -30,7 +12,7 @@
 .Trashes
 Icon?
 
-# 2.2 Package Managers & Local Dependencies
+# Package Managers & Local Dependencies
 node_modules/
 .npm/
 .yarn/
@@ -39,7 +21,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# 2.3 Compiled Chess Engine Binaries & Build Outputs
+# Compiled Chess Engine Binaries & Build Outputs
 # (Compiled executables must not be committed to git)
 stockfish-macos-m1-apple-silicon
 /stockfish/stockfish*
@@ -53,7 +35,7 @@ dist/
 *.a
 *.dylib
 
-# 2.4 Environment Secrets, Private Keys & Tokens
+# Environment Secrets, Private Keys & Tokens
 .env
 .env.*
 *.key
@@ -63,11 +45,11 @@ credentials.json
 token.json
 *secret*
 
-# 2.5 Diagnostics, Logs & Telemetry
+# Diagnostics, Logs & Telemetry
 *.log
 logs/
 
-# 2.6 IDEs, Text Editors & AI Agent Working Contexts
+# IDEs, Text Editors & AI Agent Working Contexts
 .vscode/
 .idea/
 *.swp
@@ -81,7 +63,7 @@ logs/
 antigravity.json
 .nodeterm/
 
-# 2.7 Temporary Files, Local Scratchpads & Local Internal Documents
+# Temporary Files, Local Scratchpads & Local Internal Documents
 *.tmp
 *.temp
 *.bak

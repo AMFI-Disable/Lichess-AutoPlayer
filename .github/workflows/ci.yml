@@ -24,6 +24,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
 
       - name: Validate Userscript & Server Syntax
         run: |
@@ -33,6 +37,7 @@ jobs:
 
       - name: Run Unit Tests
         run: |
+          npm ci
           npm test
           npm --prefix website ci
           npm --prefix website test

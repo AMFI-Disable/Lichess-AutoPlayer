@@ -76,9 +76,18 @@ npm install -g git+https://github.com/AMFI-Disable/Lichess-AutoPlayer.git
 lichess-autoplayer
 ```
 
-From a source checkout, you can also run `npm run mouse`. Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
+To run from a clean clone, use Node.js 22 and the Xcode Command Line Tools:
 
-From a source checkout, `npm start` also starts the mouse helper. If port 17349 is occupied, use the key from the existing helper terminal or stop that process and start a fresh helper to get a new key.
+```sh
+git clone https://github.com/AMFI-Disable/Lichess-AutoPlayer.git
+cd Lichess-AutoPlayer
+npm ci
+npm start
+```
+
+Paste the printed session key into the userscript panel. The userscript manager remembers the key across refreshes and stops. Clear the field to remove it; a new key is generated when the helper restarts. Keep the Lichess game visible and focused. Stop the script or press Ctrl+C in the terminal to disconnect. macOS Accessibility permission for the terminal process is required; grant it in System Settings if requested.
+
+From a source checkout, `npm run mouse` also starts the mouse helper. If port 17349 is occupied, use the key from the existing helper terminal or stop that process and start a fresh helper to get a new key.
 
 The helper accepts authenticated HTTP requests on localhost through the userscript manager; the session key is required for every request. It verifies the foreground application, its title, and window bounds before attempting input. It stops on focus loss or failure to confirm a move. This is experimental: browser window geometry, displays, permissions and native input have not been verified end to end. Promotion currently stops automation and must be played manually. Avoid starting a game until the setup has been verified in a permitted test environment.
 
@@ -96,7 +105,7 @@ Run `npm test` for the local unit tests and `node --check lichess-autoplayer.use
 
 ### Engine Bridge Setup
 
-To run the local WebSocket Stockfish bridge (`npm run engine`), install dependencies with `npm install`. The bridge automatically resolves `STOCKFISH_PATH`, a locally compiled `stockfish/src/stockfish` binary, system/Homebrew `stockfish`, or the bundled lite single-threaded `stockfish` npm build, and verifies the UCI handshake before it starts listening. Run `npm run check:engine` to diagnose a setup: it prints the engine in use and its start-up time, or the exact failing stage (missing file, permissions, early exit, or timeout).
+To run the local WebSocket Stockfish bridge (`npm run engine`), install dependencies with `npm ci`. The bridge automatically resolves `STOCKFISH_PATH`, a locally compiled `stockfish/src/stockfish` binary, system/Homebrew `stockfish`, or the bundled lite single-threaded `stockfish` npm build, and verifies the UCI handshake before it starts listening. Run `npm run check:engine` to diagnose a setup: it prints the engine in use and its start-up time, or the exact failing stage (missing file, permissions, early exit, or timeout).
 
 If the userscript reports an engine error, the message names the stage that failed: downloading the engine from cdnjs, starting the Web Worker, or waiting for the UCI handshake. These usually mean cdnjs.cloudflare.com is unreachable or the userscript manager blocks workers on lichess.org.
 
