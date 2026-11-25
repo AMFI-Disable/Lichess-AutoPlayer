@@ -4,6 +4,14 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Added the `stockfish` npm dependency (`^19.0.1`), updated `server/engine-bridge.js` and `test/engine-bridge.test.js` to resolve Stockfish across environment, local, Homebrew, and npm paths, and documented Engine Bridge setup in `readme.md`.
+
+---
+
 ## [2.7.4] - Clock-Aware Reply Timing
 
 - Use the opponent's last clock spend to set a reply target, with reserves for the desktop helper and low clocks.
