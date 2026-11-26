@@ -41,7 +41,19 @@
     if (!match || Number(match[2]) >= 60) return null;
     return (Number(match[1]) * 60 + Number(match[2]) + Number('0.' + (match[3] || '0'))) * 1000;
   }
-  function moveBudget(remaining, opening = false) {
+  function isBulletControl(timeControl) {
+    const parts = String(timeControl || '').split('+').map(Number);
+    return Number.isFinite(parts[0]) && Number.isFinite(parts[1]) && parts[0] * 60 + parts[1] <= 90;
+  }
+  function moveBudget(remaining, opening = false, timeControl = '3+0') {
+    if (isBulletControl(timeControl)) {
+      if (remaining === null) return { search: 220, delay: 0 };
+      const available = Math.max(0, remaining - 900);
+      const cap = remaining >= 40000 ? 600 : remaining >= 15000 ? 400 : remaining >= 5000 ? 200 : 100;
+      const divisor = remaining >= 40000 ? 50 : remaining >= 15000 ? 45 : 40;
+      const search = Math.max(40, Math.min(cap, Math.floor(available / divisor)));
+      return { search: opening ? Math.max(40, Math.floor(search * 0.75)) : search, delay: 0 };
+    }
     const available = remaining === null ? 0 : Math.max(0, remaining - 1200);
     const search = remaining === null ? 500 : Math.max(50, Math.min(2000, Math.floor(available / 35)));
     const delay = remaining === null ? 150 : remaining > 15000 ? 250 : remaining > 5000 ? 100 : 0;
@@ -53,19 +65,22 @@
     const elapsed = previous.clock + increment - current.clock;
     return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
   }
-  function responsiveBudget(remaining, opening, opponentMs, submitMs) {
-    const normal = moveBudget(remaining, opening);
-    const reserve = Math.max(1500, submitMs + 750);
-    const clockCap = remaining === null ? normal.search : Math.floor(Math.max(0, remaining - reserve) / 35);
+  function responsiveBudget(remaining, opening, opponentMs, submitMs, timeControl = '3+0') {
+    const bullet = isBulletControl(timeControl);
+    const normal = moveBudget(remaining, opening, timeControl);
+    const reserve = bullet ? Math.max(800, submitMs + 250) : Math.max(1500, submitMs + 750);
+    const divisor = bullet ? 45 : 35;
+    const floor = bullet ? 40 : 50;
+    const clockCap = remaining === null ? normal.search : Math.floor(Math.max(0, remaining - reserve) / divisor);
     // The engine searches to whatever depth fits the time left after input.
-    const target = opponentMs === null ? normal.search : opponentMs - 100 - submitMs - 500;
+    const target = opponentMs === null ? normal.search : opponentMs - (bullet ? 50 : 100) - submitMs - (bullet ? 150 : 500);
     return {
-      search: Math.max(50, Math.floor(Math.min(normal.search, clockCap, target))),
-      delay: opponentMs === null && (remaining === null || remaining > 15000) ? normal.delay : 0
+      search: Math.max(floor, Math.floor(Math.min(normal.search, clockCap, target))),
+      delay: !bullet && opponentMs === null && (remaining === null || remaining > 15000) ? normal.delay : 0
     };
   }
   function mouseSpeed(timeControl, remaining) {
-    if (remaining !== null && remaining < 15000) return 'quick';
+    if (remaining !== null && remaining < (isBulletControl(timeControl) ? 25000 : 15000)) return 'quick';
     if (timeControl === '1+0') return 'bullet';
     if (timeControl === '10+0') return 'rapid';
     return 'blitz';
@@ -124,7 +139,7 @@
   const app = {
     settings: normalizeSettings(GM_getValue('ap_settings', {})), active: false,
     worker: null, ready: false, epoch: 0, timer: null, timeout: null, game: null,
-    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, opponentClock: null, submitMs: 1800, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
+    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, opponentClock: null, submitMs: 650, multiPv: 3, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
   };
   const ui = {
     status(message, error = false) {
@@ -254,8 +269,9 @@
   function engineMessage(line) {
     if (!app.active) return;
     if (line.trim() === 'uciok' && !app.ready) {
+      app.multiPv = isBulletControl(app.settings.time) ? 1 : 3;
       app.worker.postMessage(`setoption name Skill Level value ${skillFor(app.settings.strength)}`);
-      app.worker.postMessage('setoption name MultiPV value 3');
+      app.worker.postMessage(`setoption name MultiPV value ${app.multiPv}`);
       app.worker.postMessage('isready');
     } else if (line.trim() === 'readyok' && !app.ready) {
       app.ready = true; clearTimeout(app.timeout); ui.status('Engine connected');
@@ -462,13 +478,13 @@
       if (app.pending && app.pending.key !== game.key) {
         if (app.pending.phase === 'submitted' && game.ply === app.pending.ply + 1) {
           const elapsed = performance.now() - app.pending.submittedAt;
-          app.submitMs = Math.max(700, app.submitMs * 0.5 + elapsed * 0.5);
+          app.submitMs = Math.max(250, app.submitMs * 0.5 + elapsed * 0.5);
         }
         invalidate();
       }
       if (app.pending?.phase === 'search' && !app.pending.stopRequested) {
         const remaining = readClock();
-        if (remaining !== null && remaining <= Math.max(1500, app.submitMs + 500)) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
+        if (remaining !== null && remaining <= Math.max(900, app.submitMs + 300)) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
       }
       if (app.draining || app.pending || game.chess.turn() !== game.color || app.lastPosition === game.key) return;
       const legal = game.chess.moves({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''));
@@ -478,7 +494,9 @@
       const opponentMs = opponentThinkTime(app.opponentClock, sample, app.settings.time);
       app.opponentClock = sample;
       const remaining = readClock();
-      const budget = responsiveBudget(remaining, game.opening, opponentMs, app.submitMs);
+      const wantPv = isBulletControl(app.settings.time) || (remaining !== null && remaining < 15000) ? 1 : 3;
+      if (app.multiPv !== wantPv) { app.multiPv = wantPv; app.worker.postMessage(`setoption name MultiPV value ${wantPv}`); }
+      const budget = responsiveBudget(remaining, game.opening, opponentMs, app.submitMs, app.settings.time);
       app.pending = { key: game.key, epoch: app.epoch, phase: 'search', ply: game.ply, delay: budget.delay, legal, variations: {} };
       ui.status('Thinking…');
       app.worker.postMessage(`position fen ${game.chess.fen()}`);
@@ -498,5 +516,13 @@
     const board = document.querySelector('.round__app cg-board');
     if (!board || !sameGeometry(app.pending.geometry, boardGeometry(board))) stop('Board geometry changed.', true);
   }, true);
-  setInterval(tick, 500);
+  let tickQueued = false;
+  function scheduleTick() {
+    if (tickQueued || !app.active) return;
+    tickQueued = true;
+    queueMicrotask(() => { tickQueued = false; tick(); });
+  }
+  const boardObserver = new MutationObserver(scheduleTick);
+  if (document.body) boardObserver.observe(document.body, { childList: true, subtree: true });
+  setInterval(tick, 200);
 })();

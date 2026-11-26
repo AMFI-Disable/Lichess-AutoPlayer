@@ -12,6 +12,7 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ### Fixed
 
+- **1+0 Bullet Time Management & Latency (`lichess-autoplayer.user.js`, `server/mouse-bridge.js`, `server/click-helper.swift`)**: added adaptive `1+0` bullet search budgeting (zero artificial delay, `MultiPV 1` in bullet/low-time, `650 ms` initial `submitMs` baseline), `MutationObserver`-driven instant turn detection with a `200 ms` fallback poll, cached `swiftc -O` compilation of `click-helper.swift` at bridge startup, and tighter `bullet`/`quick` pointer profiles.
 - Added the `stockfish` npm dependency (`^19.0.1`), updated `server/engine-bridge.js` and `test/engine-bridge.test.js` to resolve Stockfish across environment, local, Homebrew, and npm paths, and documented Engine Bridge setup in `readme.md`.
 
 ---

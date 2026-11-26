@@ -2,10 +2,28 @@
 'use strict';
 const http = require('http');
 const { randomBytes, timingSafeEqual } = require('crypto');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-function createBridge(secret, launch = (geometry, speed) => spawn('/usr/bin/swift', [path.join(__dirname, 'click-helper.swift'), ...geometry.map(String), speed], { stdio: ['ignore', 'ignore', 'pipe'] })) {
+function resolveHelperCommand() {
+  const src = path.join(__dirname, 'click-helper.swift');
+  const bin = path.join(os.tmpdir(), 'lichess-autoplayer-click-helper');
+  try {
+    const srcMtime = fs.statSync(src).mtimeMs;
+    const binMtime = fs.existsSync(bin) ? fs.statSync(bin).mtimeMs : 0;
+    if (binMtime < srcMtime) {
+      const built = spawnSync('/usr/bin/swiftc', ['-O', src, '-o', bin], { stdio: 'ignore', timeout: 30000 });
+      if (built.status !== 0) return (geometry, speed) => spawn('/usr/bin/swift', [src, ...geometry.map(String), speed], { stdio: ['ignore', 'ignore', 'pipe'] });
+    }
+    return (geometry, speed) => spawn(bin, [...geometry.map(String), speed], { stdio: ['ignore', 'ignore', 'pipe'] });
+  } catch {
+    return (geometry, speed) => spawn('/usr/bin/swift', [src, ...geometry.map(String), speed], { stdio: ['ignore', 'ignore', 'pipe'] });
+  }
+}
+
+function createBridge(secret, launch = resolveHelperCommand()) {
   let active = null;
   const cancelled = new Map();
   return http.createServer((req, res) => {

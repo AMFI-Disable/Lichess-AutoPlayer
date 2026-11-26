@@ -6,10 +6,10 @@ func fail(_ message: String) -> Never { fputs("\(message)\n", stderr); exit(1) }
 let args = CommandLine.arguments
 if args.count != 10 || !["bullet", "blitz", "rapid", "quick"].contains(args[9]) { fail("Expected window bounds, two screen positions and speed") }
 let profiles: [String: (steps: Int, interval: useconds_t, hold: useconds_t, pause: useconds_t)] = [
-  "quick": (10, 12000, 50000, 80000),
-  "bullet": (14, 18000, 80000, 150000),
-  "blitz": (18, 20000, 90000, 220000),
-  "rapid": (24, 22000, 100000, 300000)
+  "quick": (5, 5000, 18000, 25000),
+  "bullet": (8, 8000, 30000, 45000),
+  "blitz": (14, 14000, 60000, 120000),
+  "rapid": (20, 18000, 80000, 200000)
 ]
 let profile = profiles[args[9]]!
 let values = args[1...8].compactMap { Double($0) }

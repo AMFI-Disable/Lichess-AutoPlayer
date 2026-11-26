@@ -78,10 +78,24 @@ test('engine variations use complete centipawn scores and legal same-depth moves
 
 test('pointer profile follows the time control and remaining clock', () => {
   assert.equal(mouseSpeed('1+0', null), 'bullet');
+  assert.equal(mouseSpeed('1+0', 20000), 'quick');
   assert.equal(mouseSpeed('3+0', 15000), 'blitz');
   assert.equal(mouseSpeed('5+3', 30000), 'blitz');
   assert.equal(mouseSpeed('10+0', 30000), 'rapid');
   assert.equal(mouseSpeed('10+0', 14999), 'quick');
+});
+
+test('1+0 bullet budget eliminates artificial delay and scales smoothly under low clock', () => {
+  const high = moveBudget(55000, false, '1+0');
+  const mid = moveBudget(20000, false, '1+0');
+  const low = moveBudget(4000, false, '1+0');
+  assert.equal(high.delay, 0);
+  assert.equal(mid.delay, 0);
+  assert.equal(low.delay, 0);
+  assert.ok(high.search <= 600 && high.search > mid.search && mid.search > low.search && low.search >= 40);
+  const resp = responsiveBudget(30000, false, 900, 350, '1+0');
+  assert.equal(resp.delay, 0);
+  assert.ok(resp.search >= 40 && resp.search <= 400);
 });
 
 test('game outcomes and analysis use the player color and preserve unavailable data', () => {
