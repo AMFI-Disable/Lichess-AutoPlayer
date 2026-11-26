@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.5
+// @version      2.7.6
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -65,6 +65,37 @@
     const elapsed = previous.clock + increment - current.clock;
     return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
   }
+  function gamePhaseFactor(ply) {
+    if (ply < 10) return 0.55;
+    if (ply < 50) return 1.15;
+    return 0.90;
+  }
+  function complexityFactor(legalCount, captureCount = 0) {
+    if (legalCount <= 3) return 0.25;
+    if (legalCount <= 16) return 0.80;
+    if (legalCount >= 33 || captureCount >= 6) return 1.25;
+    return 1.0;
+  }
+  function adaptiveBudget({ remaining, ply = 20, legalCount = 24, captureCount = 0, opponentMs = null, submitMs = 650, timeControl = '3+0' }) {
+    const bullet = isBulletControl(timeControl);
+    const floor = bullet ? 40 : 50;
+    if (legalCount <= 3) return { search: floor, delay: 0 };
+    const base = moveBudget(remaining, ply < 6, timeControl);
+    const reserve = bullet ? Math.max(800, submitMs + 250) : Math.max(1500, submitMs + 750);
+    const divisor = bullet ? 45 : 32;
+    const clockCap = remaining === null ? base.search : Math.floor(Math.max(0, remaining - reserve) / divisor);
+    let factor = gamePhaseFactor(ply) * complexityFactor(legalCount, captureCount);
+    if (opponentMs !== null) {
+      if (opponentMs < (bullet ? 1200 : 2500)) factor *= 0.80;
+      else if (opponentMs > (bullet ? 4000 : 8000) && (remaining === null || remaining > 15000)) factor *= 1.15;
+    }
+    const maxCap = bullet ? (remaining !== null && remaining < 15000 ? 220 : 650) : 2500;
+    const raw = Math.round(base.search * factor);
+    return {
+      search: Math.max(floor, Math.min(maxCap, clockCap, raw)),
+      delay: 0
+    };
+  }
   function responsiveBudget(remaining, opening, opponentMs, submitMs, timeControl = '3+0') {
     const bullet = isBulletControl(timeControl);
     const normal = moveBudget(remaining, opening, timeControl);
@@ -72,7 +103,6 @@
     const divisor = bullet ? 45 : 35;
     const floor = bullet ? 40 : 50;
     const clockCap = remaining === null ? normal.search : Math.floor(Math.max(0, remaining - reserve) / divisor);
-    // The engine searches to whatever depth fits the time left after input.
     const target = opponentMs === null ? normal.search : opponentMs - (bullet ? 50 : 100) - submitMs - (bullet ? 150 : 500);
     return {
       search: Math.max(floor, Math.floor(Math.min(normal.search, clockCap, target))),
@@ -150,7 +180,7 @@
     return chess;
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource };
+    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, adaptiveBudget, gamePhaseFactor, complexityFactor, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource };
     return;
   }
 
@@ -171,7 +201,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.5</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.6</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -218,14 +248,21 @@
     }
     app.pending = null;
   }
+  function cleanupWorkerUrl() {
+    if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
+  }
+  function cleanupWorker() {
+    if (app.worker) { app.worker.terminate(); app.worker = null; }
+    cleanupWorkerUrl();
+    app.ready = false; app.draining = false;
+  }
   function recoverEngine(reason) {
     if (!app.active) return;
     if (app.engineRestarts >= 2) return stop(reason, true);
     app.engineRestarts++;
     clearTimeout(app.timer); clearTimeout(app.timeout);
-    if (app.worker) { app.worker.terminate(); app.worker = null; }
-    if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
-    app.ready = false; app.draining = false; app.pending = null; app.lastPosition = null;
+    cleanupWorker();
+    app.pending = null; app.lastPosition = null;
     ui.status(`Recovering engine (${app.engineRestarts}/2)…`);
     startEngine(++app.epoch);
   }
@@ -234,9 +271,8 @@
     const activePool = document.querySelector('.lpool.active[data-id]');
     if (activePool && app.pairing) activePool.click();
     app.pairing = null;
-    if (app.worker) { app.worker.terminate(); app.worker = null; }
-    if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
-    app.ready = false; app.draining = false; clearTimeout(app.bridgeTimeout); app.bridge = null; app.bridgeReady = false; ui.update(); ui.status(message, error);
+    cleanupWorker();
+    clearTimeout(app.bridgeTimeout); app.bridge = null; app.bridgeReady = false; ui.update(); ui.status(message, error);
   }
   function bridgeRequest(route, data, done) {
     GM_xmlhttpRequest({ method: 'POST', url: `http://127.0.0.1:17349${route}`,
@@ -370,10 +406,10 @@
   function engineMessage(line) {
     if (!app.active) return;
     if (line.trim() === 'uciok' && !app.ready) {
-      if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
-      app.multiPv = isBulletControl(app.settings.time) ? 1 : 3;
+      cleanupWorkerUrl();
+      app.multiPv = 1;
       app.worker.postMessage(`setoption name Skill Level value ${skillFor(app.settings.strength)}`);
-      app.worker.postMessage(`setoption name MultiPV value ${app.multiPv}`);
+      app.worker.postMessage('setoption name MultiPV value 1');
       app.worker.postMessage('isready');
     } else if (line.trim() === 'readyok' && !app.ready) {
       app.ready = true; clearTimeout(app.timeout); ui.status('Engine connected');
@@ -390,10 +426,7 @@
       clearTimeout(app.timer);
       const pending = app.pending, match = /^bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/.exec(line);
       if (!match || !pending.legal.includes(match[1])) return stop('Engine returned an invalid move.', true);
-      pending.phase = 'delay';
-      const groups = Object.values(pending.variations).filter(group => group[1]?.move === match[1]);
-      groups.sort((a, b) => b[1].depth - a[1].depth);
-      const move = chooseVariation(match[1], pending.legal, groups.length ? Object.values(groups[0]) : []);
+      const move = match[1];
       ui.status('Move calculated');
       const submitWhenFocused = () => {
         if (!app.active || app.pending !== pending || app.epoch !== pending.epoch) return;
@@ -446,7 +479,8 @@
           stop('Move was not confirmed by Lichess. Check the game and connection.', true);
         }, 5000);
       };
-      app.timer = setTimeout(submitWhenFocused, pending.delay);
+      if (pending.delay > 0) app.timer = setTimeout(submitWhenFocused, pending.delay);
+      else submitWhenFocused();
     }
   }
   function boardGeometry(board) {
@@ -621,16 +655,17 @@
         if (remaining !== null && remaining <= Math.max(900, app.submitMs + 300)) { app.pending.stopRequested = true; app.worker.postMessage('stop'); }
       }
       if (app.draining || app.pending || game.chess.turn() !== game.color || app.lastPosition === game.key) return;
-      const legal = game.chess.moves({ verbose: true }).map(m => m.from + m.to + (m.promotion || ''));
+      const verboseMoves = game.chess.moves({ verbose: true });
+      const legal = verboseMoves.map(m => m.from + m.to + (m.promotion || ''));
       if (!legal.length) return;
+      const captureCount = verboseMoves.filter(m => m.captured || m.flags?.includes('c') || m.flags?.includes('e')).length;
       app.lastPosition = game.key;
       const sample = { ply: game.ply, clock: readClock('top') };
       const opponentMs = opponentThinkTime(app.opponentClock, sample, app.settings.time);
       app.opponentClock = sample;
       const remaining = readClock();
-      const wantPv = isBulletControl(app.settings.time) || (remaining !== null && remaining < 15000) ? 1 : 3;
-      if (app.multiPv !== wantPv) { app.multiPv = wantPv; app.worker.postMessage(`setoption name MultiPV value ${wantPv}`); }
-      const budget = responsiveBudget(remaining, game.opening, opponentMs, app.submitMs, app.settings.time);
+      if (app.multiPv !== 1) { app.multiPv = 1; app.worker.postMessage('setoption name MultiPV value 1'); }
+      const budget = adaptiveBudget({ remaining, ply: game.ply, legalCount: legal.length, captureCount, opponentMs, submitMs: app.submitMs, timeControl: app.settings.time });
       app.pending = { gameId: game.id, key: game.key, epoch: app.epoch, phase: 'search', ply: game.ply, delay: budget.delay, retries: 0, legal, variations: {} };
       ui.status('Thinking…');
       app.worker.postMessage(`position fen ${game.chess.fen()}`);

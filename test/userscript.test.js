@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource } = require('../lichess-autoplayer.user.js');
+const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, adaptiveBudget, gamePhaseFactor, complexityFactor, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource } = require('../lichess-autoplayer.user.js');
 
 test('rating slider settings are validated and old presets migrate', () => {
   assert.deepEqual(normalizeSettings({ time: 'bad', limit: -1, strength: 'bad' }), { time: '3+0', limit: '1', strength: 1500, autoAnalysis: true });
@@ -142,4 +142,16 @@ test('patchEngineSource validates engine payload and rewrites locateFile base UR
   const sample = 'var Module={locateFile:function(file){return file},pad:"' + 'x'.repeat(1100) + '"};';
   const patched = patchEngineSource(sample, 'https://cdn.example/sf/');
   assert.ok(patched.includes("locateFile:function(file){return 'https://cdn.example/sf/'+file}"));
+});
+
+test('adaptiveBudget scales by game phase, position complexity, and opponent time without delay', () => {
+  assert.ok(gamePhaseFactor(4) < gamePhaseFactor(24) && gamePhaseFactor(60) < gamePhaseFactor(24));
+  assert.ok(complexityFactor(2, 0) < complexityFactor(12, 0) && complexityFactor(12, 0) < complexityFactor(36, 6));
+  const forced = adaptiveBudget({ remaining: 45000, ply: 24, legalCount: 2, captureCount: 0, opponentMs: 2000, submitMs: 350, timeControl: '1+0' });
+  assert.deepEqual(forced, { search: 40, delay: 0 });
+  const complexMid = adaptiveBudget({ remaining: 45000, ply: 24, legalCount: 38, captureCount: 7, opponentMs: 5000, submitMs: 350, timeControl: '1+0' });
+  const fastOp = adaptiveBudget({ remaining: 45000, ply: 24, legalCount: 24, captureCount: 1, opponentMs: 600, submitMs: 350, timeControl: '1+0' });
+  assert.equal(complexMid.delay, 0);
+  assert.equal(fastOp.delay, 0);
+  assert.ok(complexMid.search > fastOp.search && complexMid.search <= 650);
 });

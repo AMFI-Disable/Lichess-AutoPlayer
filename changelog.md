@@ -8,6 +8,7 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ### Changed
 
+- **Adaptive Time Management & Modular Refactor (`2.7.6` / `package.json` `1.0.3`)**: replaced artificial move-submission delays and `MultiPV 3` variation randomization with `adaptiveBudget()` (`gamePhaseFactor`, `complexityFactor`, `opponentMs`, and remaining clock reserve), centralized `cleanupWorker()` lifecycle helpers, and bumped patch versions (`2.7.6` userscript, `1.0.3` package).
 - Standardized `.gitignore` to the two-section whitelist and artifact ignore template while preserving Stockfish engine and local checkout exclusions.
 
 ### Fixed
