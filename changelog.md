@@ -6,6 +6,10 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ## [Unreleased]
 
+### Changed
+
+- Standardized `.gitignore` to the two-section whitelist and artifact ignore template while preserving Stockfish engine and local checkout exclusions.
+
 ### Fixed
 
 - Added the `stockfish` npm dependency (`^19.0.1`), updated `server/engine-bridge.js` and `test/engine-bridge.test.js` to resolve Stockfish across environment, local, Homebrew, and npm paths, and documented Engine Bridge setup in `readme.md`.
