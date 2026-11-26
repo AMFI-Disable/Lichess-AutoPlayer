@@ -105,7 +105,9 @@ async function startServer() {
   }
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: PORT });
-  console.log(`[Bridge Server] Stockfish Engine Bridge running on ws://127.0.0.1:${PORT} (using ${resolved.command})`);
+  wss.on('listening', () => {
+    console.log(`[Bridge Server] Stockfish Engine Bridge running on ws://127.0.0.1:${PORT} (using ${resolved.command})`);
+  });
 
   wss.on('connection', (ws) => {
     console.log('[Bridge Server] Client connected from browser/userscript.');
