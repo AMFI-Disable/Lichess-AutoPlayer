@@ -135,6 +135,12 @@
     const exp = Math.max(0, Number(attempt) - 1);
     return Math.min(capMs, Math.round(baseMs * Math.pow(2, exp)));
   }
+  function patchEngineSource(code, baseUrl) {
+    if (typeof code !== 'string' || code.length < 1000 || /^\s*</.test(code)) {
+      throw new Error('Downloaded engine script was empty or invalid');
+    }
+    return code.replace('locateFile:function(file){return file}', `locateFile:function(file){return '${baseUrl}'+file}`);
+  }
   function parseMoves(sans, ChessClass) {
     if (typeof ChessClass !== 'function') throw new Error('Chess library failed to load');
     const chess = new ChessClass();
@@ -144,7 +150,7 @@
     return chess;
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs };
+    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource };
     return;
   }
 
@@ -218,6 +224,7 @@
     app.engineRestarts++;
     clearTimeout(app.timer); clearTimeout(app.timeout);
     if (app.worker) { app.worker.terminate(); app.worker = null; }
+    if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
     app.ready = false; app.draining = false; app.pending = null; app.lastPosition = null;
     ui.status(`Recovering engine (${app.engineRestarts}/2)…`);
     startEngine(++app.epoch);
@@ -228,6 +235,7 @@
     if (activePool && app.pairing) activePool.click();
     app.pairing = null;
     if (app.worker) { app.worker.terminate(); app.worker = null; }
+    if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
     app.ready = false; app.draining = false; clearTimeout(app.bridgeTimeout); app.bridge = null; app.bridgeReady = false; ui.update(); ui.status(message, error);
   }
   function bridgeRequest(route, data, done) {
@@ -266,32 +274,103 @@
       stop(`Desktop connection could not start: ${error.message}`, true);
     }
   }
-  function startEngine(epoch) {
-    ui.status('Desktop helper connected · downloading engine…');
-    app.stage = 'downloading the engine';
-    app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop(`Engine timed out while ${app.stage || 'starting'}. Check that cdnjs.cloudflare.com is reachable and that your userscript manager allows Web Workers on lichess.org, then press Start to retry.`, true); }, 20000);
-    GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js',
-      onload(response) {
-        if (!app.active || app.epoch !== epoch) return;
-        if (response.status !== 200) return stop(`Engine download failed (HTTP ${response.status}) from ${ENGINE_URL}. Press Start to retry.`, true);
-        try {
-          // Stockfish's worker resolves its wasm relative to its own blob URL otherwise.
-          const code = response.responseText.replace('locateFile:function(file){return file}', `locateFile:function(file){return '${ENGINE_URL}'+file}`);
-          app.stage = 'starting the engine worker';
-          const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
-          const worker = new Worker(url); URL.revokeObjectURL(url); app.worker = worker;
-          worker.onerror = event => stop(`Engine worker failed${event && event.message ? `: ${event.message}` : ' to start (the page may block workers or the engine download was invalid)'}. Press Start to retry.`, true);
-          worker.onmessage = event => engineMessage(String(event.data));
-          app.stage = 'waiting for the engine to answer the UCI handshake';
-          worker.postMessage('uci');
-        } catch (error) { stop(`Engine failed: ${error.message}`, true); }
-      }, onerror() { if (app.active && app.epoch === epoch) stop(`Engine download failed: could not reach ${ENGINE_URL}. Check your connection and the userscript manager's network permissions, then press Start to retry.`, true); },
-      ontimeout() { if (app.active && app.epoch === epoch) stop('Engine download timed out. Press Start to retry.', true); }, timeout: 15000
+  let engineSourceCache = null;
+  function getCachedEngine() {
+    if (engineSourceCache) return engineSourceCache;
+    try {
+      const saved = GM_getValue('ap_engine_cache', null);
+      if (saved && saved.url === ENGINE_URL && typeof saved.code === 'string' && saved.code.length > 1000) {
+        engineSourceCache = saved.code;
+        return engineSourceCache;
+      }
+    } catch {}
+    return null;
+  }
+  function setCachedEngine(code) {
+    engineSourceCache = code;
+    try { GM_setValue('ap_engine_cache', { url: ENGINE_URL, code }); } catch {}
+  }
+  function downloadEngineOnce(onProgress) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET', url: ENGINE_URL + 'stockfish.js', timeout: 15000,
+        onprogress(event) {
+          if (!onProgress) return;
+          if (event.lengthComputable && event.total > 0) onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)) + '%');
+          else if (event.loaded > 0) onProgress(`${Math.round(event.loaded / 1024)} KB`);
+        },
+        onload(response) {
+          if (response.status !== 200) return reject(new Error(`HTTP ${response.status}`));
+          try { resolve(patchEngineSource(response.responseText, ENGINE_URL)); } catch (err) { reject(err); }
+        },
+        onerror: () => reject(new Error(`Could not reach ${ENGINE_URL}`)),
+        ontimeout: () => reject(new Error('Engine download timed out')),
+        onabort: () => reject(new Error('Engine download was aborted'))
+      });
     });
+  }
+  async function loadEngineSource(epoch) {
+    const cached = getCachedEngine();
+    if (cached) return cached;
+    let lastError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (!app.active || app.epoch !== epoch) return null;
+      try {
+        const code = await downloadEngineOnce(pct => {
+          if (app.active && app.epoch === epoch) ui.status(`Desktop helper connected · downloading engine (${pct})…`);
+        });
+        setCachedEngine(code);
+        return code;
+      } catch (err) {
+        lastError = err;
+        if (attempt < 2 && app.active && app.epoch === epoch) {
+          ui.status(`Engine download failed (${err.message}) · retrying…`);
+          await waitForAnalysis(nextBackoffMs(attempt, 800, 2500));
+        }
+      }
+    }
+    if (!app.active || app.epoch !== epoch) return null;
+    ui.status('Retrying engine download via browser fetch…');
+    try {
+      const response = await fetch(ENGINE_URL + 'stockfish.js', { cache: 'force-cache', signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const code = patchEngineSource(await response.text(), ENGINE_URL);
+      setCachedEngine(code);
+      return code;
+    } catch (err) {
+      throw new Error(`${lastError?.message || err.message}. Check your connection and userscript permissions, then press Start to retry.`);
+    }
+  }
+  async function startEngine(epoch) {
+    const cached = !!getCachedEngine();
+    ui.status(cached ? 'Desktop helper connected · starting cached engine…' : 'Desktop helper connected · downloading engine…');
+    app.stage = cached ? 'starting the cached engine' : 'downloading the engine';
+    clearTimeout(app.timeout);
+    app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop(`Engine timed out while ${app.stage || 'starting'}. Check that cdnjs.cloudflare.com is reachable and that your userscript manager allows Web Workers on lichess.org, then press Start to retry.`, true); }, 35000);
+    try {
+      const code = await loadEngineSource(epoch);
+      if (!code || !app.active || app.epoch !== epoch) return;
+      app.stage = 'starting the engine worker';
+      ui.status('Starting engine worker…');
+      const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+      app.workerUrl = url;
+      const worker = new Worker(url);
+      app.worker = worker;
+      worker.onerror = event => {
+        if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
+        stop(`Engine worker failed${event && event.message ? `: ${event.message}` : ' to start (the page may block workers or the engine download was invalid)'}. Press Start to retry.`, true);
+      };
+      worker.onmessage = event => engineMessage(String(event.data));
+      app.stage = 'waiting for the engine to answer the UCI handshake';
+      worker.postMessage('uci');
+    } catch (error) {
+      if (app.active && app.epoch === epoch) stop(`Engine download failed: ${error.message}`, true);
+    }
   }
   function engineMessage(line) {
     if (!app.active) return;
     if (line.trim() === 'uciok' && !app.ready) {
+      if (app.workerUrl) { URL.revokeObjectURL(app.workerUrl); app.workerUrl = null; }
       app.multiPv = isBulletControl(app.settings.time) ? 1 : 3;
       app.worker.postMessage(`setoption name Skill Level value ${skillFor(app.settings.strength)}`);
       app.worker.postMessage(`setoption name MultiPV value ${app.multiPv}`);

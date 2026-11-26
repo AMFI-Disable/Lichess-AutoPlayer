@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs } = require('../lichess-autoplayer.user.js');
+const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs, patchEngineSource } = require('../lichess-autoplayer.user.js');
 
 test('rating slider settings are validated and old presets migrate', () => {
   assert.deepEqual(normalizeSettings({ time: 'bad', limit: -1, strength: 'bad' }), { time: '3+0', limit: '1', strength: 1500, autoAnalysis: true });
@@ -134,4 +134,12 @@ test('recovery helpers prevent duplicate moves and skip analysis on aborted game
   assert.equal(nextBackoffMs(1, 350, 1500), 350);
   assert.equal(nextBackoffMs(3, 350, 1500), 1400);
   assert.equal(nextBackoffMs(5, 350, 1500), 1500);
+});
+
+test('patchEngineSource validates engine payload and rewrites locateFile base URL', () => {
+  assert.throws(() => patchEngineSource('<html>502</html>', 'https://cdn.example/'), /empty or invalid/);
+  assert.throws(() => patchEngineSource('short', 'https://cdn.example/'), /empty or invalid/);
+  const sample = 'var Module={locateFile:function(file){return file},pad:"' + 'x'.repeat(1100) + '"};';
+  const patched = patchEngineSource(sample, 'https://cdn.example/sf/');
+  assert.ok(patched.includes("locateFile:function(file){return 'https://cdn.example/sf/'+file}"));
 });
