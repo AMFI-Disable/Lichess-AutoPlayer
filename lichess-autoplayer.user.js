@@ -122,6 +122,19 @@
   function gameIdFromPath(path) {
     return /^\/(?:game\/)?([a-zA-Z0-9]{12})(?:\/(?:white|black))?\/?$/.exec(path)?.[1] || null;
   }
+  function shouldRequestAnalysis(game) {
+    return !!(game && game.ended && (game.ply || 0) >= 4 && /^(1-0|0-1|½-½|1\/2-1\/2)$/.test(game.result || ''));
+  }
+  function classifyMoveTimeout(pending, current) {
+    if (!pending || !current || (pending.gameId && current.id !== pending.gameId)) return 'stale';
+    if (current.ended) return 'ended';
+    if (current.key !== pending.key || current.chess?.turn() !== current.color) return 'confirmed';
+    return (pending.retries || 0) < 2 ? 'retry' : 'abort';
+  }
+  function nextBackoffMs(attempt, baseMs = 1500, capMs = 15000) {
+    const exp = Math.max(0, Number(attempt) - 1);
+    return Math.min(capMs, Math.round(baseMs * Math.pow(2, exp)));
+  }
   function parseMoves(sans, ChessClass) {
     if (typeof ChessClass !== 'function') throw new Error('Chess library failed to load');
     const chess = new ChessClass();
@@ -131,7 +144,7 @@
     return chess;
   }
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath };
+    module.exports = { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs };
     return;
   }
 
@@ -139,7 +152,7 @@
   const app = {
     settings: normalizeSettings(GM_getValue('ap_settings', {})), active: false,
     worker: null, ready: false, epoch: 0, timer: null, timeout: null, game: null,
-    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, opponentClock: null, submitMs: 650, multiPv: 3, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
+    finished: new Set(savedSession.finished || []), played: savedSession.played || 0, draining: false, pending: null, lastPosition: null, opponentClock: null, submitMs: 650, multiPv: 3, engineRestarts: 0, parseFailures: 0, rateLimitedUntil: 0, pairing: null, bridge: null, bridgeReady: false, analysisJob: null, stopAfter: !!savedSession.stopAfter
   };
   const ui = {
     status(message, error = false) {
@@ -195,9 +208,19 @@
     if (app.bridgeReady && app.pending?.id) bridgeRequest('/cancel', { id: app.pending.id }, () => {});
     if (app.pending?.phase === 'search' && app.worker && app.ready) {
       app.draining = true; app.worker.postMessage('stop');
-      app.timeout = setTimeout(() => { if (app.active && app.draining) stop('Engine did not stop. Press Start to retry.', true); }, 5000);
+      app.timeout = setTimeout(() => { if (app.active && app.draining) recoverEngine('Engine did not stop. Press Start to retry.'); }, 5000);
     }
     app.pending = null;
+  }
+  function recoverEngine(reason) {
+    if (!app.active) return;
+    if (app.engineRestarts >= 2) return stop(reason, true);
+    app.engineRestarts++;
+    clearTimeout(app.timer); clearTimeout(app.timeout);
+    if (app.worker) { app.worker.terminate(); app.worker = null; }
+    app.ready = false; app.draining = false; app.pending = null; app.lastPosition = null;
+    ui.status(`Recovering engine (${app.engineRestarts}/2)…`);
+    startEngine(++app.epoch);
   }
   function stop(message, error = false) {
     app.active = false; app.stopAfter = false; app.analysisJob = null; saveSession(false); invalidate(); clearTimeout(app.timeout);
@@ -222,7 +245,7 @@
     if (!/^[a-f0-9]{48}$/.test(key)) { ui.status('Run npm run mouse and paste the 48-character session key from the terminal.', true); return; }
     GM_setValue('ap_session_key', key);
     app.active = true; if (!resume) { app.played = 0; app.finished.clear(); app.stopAfter = false; } saveSession(true); app.game = null;
-    app.lastPosition = null; app.pairing = null; ui.update(); ui.status('Connecting to desktop helper…');
+    app.lastPosition = null; app.engineRestarts = 0; app.parseFailures = 0; app.pairing = null; ui.update(); ui.status('Connecting to desktop helper…');
     const epoch = ++app.epoch;
     app.bridgeTimeout = setTimeout(() => {
       if (app.active && app.epoch === epoch && !app.bridgeReady) {
@@ -313,9 +336,36 @@
         const offsetX = window.screenX + (window.outerWidth - window.innerWidth) / 2;
         const offsetY = window.screenY + window.outerHeight - window.innerHeight;
         pending.id = `${pending.epoch}-${Date.now()}`;
-        bridgeRequest('/move', { id: pending.id, speed: mouseSpeed(app.settings.time, readClock()), geometry: [window.screenX, window.screenY, window.outerWidth, window.outerHeight, offsetX + from.x, offsetY + from.y, offsetX + to.x, offsetY + to.y] }, error => { if (error && app.active && app.pending === pending) stop(`Desktop helper: ${error}`, true); });
+        bridgeRequest('/move', { id: pending.id, speed: mouseSpeed(app.settings.time, readClock()), geometry: [window.screenX, window.screenY, window.outerWidth, window.outerHeight, offsetX + from.x, offsetY + from.y, offsetX + to.x, offsetY + to.y] }, error => {
+          if (!error || !app.active || app.pending !== pending) return;
+          const action = classifyMoveTimeout(pending, readGame());
+          if (action === 'retry') {
+            pending.retries = (pending.retries || 0) + 1; pending.phase = 'delay';
+            clearTimeout(app.timer);
+            app.timer = setTimeout(submitWhenFocused, nextBackoffMs(pending.retries, 350, 1500));
+          } else if (action === 'confirmed' || action === 'stale') {
+            invalidate();
+          } else if (action === 'ended') {
+            invalidate();
+          } else {
+            stop(`Desktop helper: ${error}`, true);
+          }
+        });
         ui.status('Waiting for move confirmation…');
-        app.timer = setTimeout(() => { if (app.pending === pending) stop('Move was not confirmed by Lichess. Check the game and connection.', true); }, 5000);
+        app.timer = setTimeout(() => {
+          if (app.pending !== pending || !app.active) return;
+          const cur = readGame();
+          const action = classifyMoveTimeout(pending, cur);
+          if (action === 'confirmed' || action === 'stale') return invalidate();
+          if (action === 'ended') { invalidate(); return finishGame(cur); }
+          if (action === 'retry') {
+            pending.retries = (pending.retries || 0) + 1; pending.phase = 'delay';
+            ui.status(`Move unconfirmed · retrying (${pending.retries}/2)…`);
+            app.timer = setTimeout(submitWhenFocused, nextBackoffMs(pending.retries, 350, 1500));
+            return;
+          }
+          stop('Move was not confirmed by Lichess. Check the game and connection.', true);
+        }, 5000);
       };
       app.timer = setTimeout(submitWhenFocused, pending.delay);
     }
@@ -333,12 +383,11 @@
     const board = document.querySelector('.round__app cg-board');
     if (!id || !board) return null;
     const color = board.closest('.cg-wrap')?.classList.contains('orientation-black') ? 'b' : 'w';
-    const result = document.querySelector('.round__app .result')?.textContent.trim() || '';
-    if (document.querySelector('.round__app .result-wrap, .round__app .result')) {
-      return { id, color, ended: true, result };
-    }
     const sans = Array.from(document.querySelectorAll('.round__app z7yx, .round__app kwdb, .round__app .moves move'))
       .map(el => el.childNodes[0]?.textContent.trim()).filter(x => x && x !== '…');
+    if (document.querySelector('.round__app .result-wrap, .round__app .result')) {
+      return { id, color, ended: true, result, ply: sans.length };
+    }
     const ChessClass = typeof Chess === 'function' ? Chess : window.Chess;
     const chess = parseMoves(sans, ChessClass);
     return { id, board, chess, color, ended: false, ply: sans.length, opening: sans.length < 6, key: id + ':' + chess.fen() };
@@ -413,31 +462,35 @@
       if (app.settings.limit !== 'infinite' && app.played >= Number(app.settings.limit)) return stop('Game limit reached');
       ui.status('Game finished · returning to lobby'); location.assign('/');
     };
-    if (!app.settings.autoAnalysis) return finish();
+    if (!app.settings.autoAnalysis || !shouldRequestAnalysis(game) || Date.now() < app.rateLimitedUntil) return finish();
     const job = { id: game.id.slice(0, 8) };
     app.analysisJob = job;
     const current = () => app.active && app.analysisJob === job;
-    const fail = message => { if (current()) stop(message, true); };
+    const skip = message => { if (current()) { ui.status(message); setTimeout(() => { if (current()) finish(); }, 1500); } };
     try {
       ui.status('Game finished · preparing analysis…');
       await waitForAnalysis(1500);
       if (!current()) return;
       ui.status('Requesting game analysis…');
-      const response = await fetch(`/game/${job.id}/request-analysis`, {
+      let response = await fetch(`/game/${job.id}/request-analysis`, {
         method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' },
         signal: AbortSignal.timeout(10000)
       });
+      if (response.status >= 500 && current()) {
+        await waitForAnalysis(1500);
+        if (current()) response = await fetch(`/game/${job.id}/request-analysis`, { method: 'POST', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: AbortSignal.timeout(10000) });
+      }
       const message = response.ok ? '' : (await response.text()).trim();
       if (!current()) return;
-      if (response.status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+      if (response.status === 429) { app.rateLimitedUntil = Date.now() + 60000; return skip('Analysis rate limited · returning to lobby'); }
       if (response.redirected || response.status === 401 || response.status === 403) {
-        return fail('Lichess did not authorize the analysis request. Check that you are signed in.');
+        return skip('Analysis skipped (auth required) · returning to lobby');
       }
       if (!response.ok && !/already analy[sz]/i.test(message)) {
-        return fail(`Analysis request rejected (${response.status})${message && !message.includes('<') ? ': ' + message.slice(0, 160) : '.'}`);
+        return skip(`Analysis skipped (${response.status}) · returning to lobby`);
       }
     } catch {
-      return fail('Could not request game analysis.');
+      return skip('Analysis request timed out · returning to lobby');
     }
     ui.status('Waiting for game analysis…');
     const deadline = Date.now() + 90000;
@@ -445,27 +498,29 @@
       try {
         const { status, counts } = await fetchAnalysis(job.id, game.color);
         if (!current()) return;
-        if (status === 429) return fail('Analysis rate limited. Wait a minute before retrying.');
+        if (status === 429) { app.rateLimitedUntil = Date.now() + 60000; return skip('Analysis rate limited · returning to lobby'); }
         if (counts) { saveAnalysis(job.id, counts); return finish(); }
       } catch {}
       if (current()) await waitForAnalysis(3000);
     }
-    fail('Analysis timed out. Refresh analysis later.');
+    skip('Analysis timed out · returning to lobby');
   }
   function pairingTick(now) {
     if (location.pathname !== '/') { ui.status('Open the Lichess lobby to pair'); return; }
     const pool = Array.from(document.querySelectorAll('.lpool[data-id]')).find(el => el.querySelector('.clock')?.textContent.trim() === app.settings.time);
     if (!pool) return stop(`Quick pairing ${app.settings.time} is unavailable.`, true);
     if (pool.classList.contains('active')) { app.pairing = { attempts: 0, at: now }; ui.status(`Searching · ${app.settings.time}`); return; }
-    if (app.pairing && now - app.pairing.at < 5000) return;
+    const waitMs = nextBackoffMs(app.pairing?.attempts || 0, 3000, 12000);
+    if (app.pairing && now - app.pairing.at < waitMs) return;
     const attempts = (app.pairing?.attempts || 0) + 1;
-    if (attempts > 3) return stop('Pairing was not confirmed. Check the lobby and retry.', true);
+    if (attempts > 5) return stop('Pairing was not confirmed. Check the lobby and retry.', true);
     app.pairing = { attempts, at: now }; pool.click(); ui.status(`Starting pairing · ${app.settings.time}`);
   }
   function tick() {
     if (!app.active || app.analysisJob) return;
     try {
       const game = readGame();
+      app.parseFailures = 0;
       if (!game && (!app.ready || !app.bridgeReady)) return;
       if (!game) { if (app.game) { invalidate(); app.game = null; } pairingTick(Date.now()); return; }
       if (game.ended) {
@@ -474,7 +529,7 @@
         finishGame(game); return;
       }
       if (!app.ready || !app.bridgeReady) return;
-      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.opponentClock = null; app.pairing = null; app.worker.postMessage('ucinewgame'); }
+      if (app.game !== game.id) { invalidate(); app.game = game.id; app.lastPosition = null; app.opponentClock = null; app.engineRestarts = 0; app.pairing = null; app.worker.postMessage('ucinewgame'); }
       if (app.pending && app.pending.key !== game.key) {
         if (app.pending.phase === 'submitted' && game.ply === app.pending.ply + 1) {
           const elapsed = performance.now() - app.pending.submittedAt;
@@ -497,13 +552,17 @@
       const wantPv = isBulletControl(app.settings.time) || (remaining !== null && remaining < 15000) ? 1 : 3;
       if (app.multiPv !== wantPv) { app.multiPv = wantPv; app.worker.postMessage(`setoption name MultiPV value ${wantPv}`); }
       const budget = responsiveBudget(remaining, game.opening, opponentMs, app.submitMs, app.settings.time);
-      app.pending = { key: game.key, epoch: app.epoch, phase: 'search', ply: game.ply, delay: budget.delay, legal, variations: {} };
+      app.pending = { gameId: game.id, key: game.key, epoch: app.epoch, phase: 'search', ply: game.ply, delay: budget.delay, retries: 0, legal, variations: {} };
       ui.status('Thinking…');
       app.worker.postMessage(`position fen ${game.chess.fen()}`);
       if (remaining === null) ui.status('Thinking… clock unavailable');
       app.worker.postMessage(`go movetime ${budget.search}`);
-      app.timer = setTimeout(() => { if (app.pending?.phase === 'search') stop('Engine search timed out.', true); }, 30000);
-    } catch (error) { stop(`${error.message}. Check the game and retry.`, true); }
+      const searchTimeoutMs = Math.max(4000, budget.search + 3000);
+      app.timer = setTimeout(() => { if (app.pending?.phase === 'search') recoverEngine('Engine search timed out.'); }, searchTimeoutMs);
+    } catch (error) {
+      if (++app.parseFailures < 3 && /Could not read game moves/.test(error.message)) return;
+      stop(`${error.message}. Check the game and retry.`, true);
+    }
   }
   ui.render(); if (savedSession.active) {
     const key = GM_getValue('ap_session_key', '');

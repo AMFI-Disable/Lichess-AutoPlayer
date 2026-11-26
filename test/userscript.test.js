@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath } = require('../lichess-autoplayer.user.js');
+const { normalizeSettings, skillFor, parseClock, moveBudget, opponentThinkTime, responsiveBudget, mouseSpeed, parseVariation, chooseVariation, gameOutcome, analysisCounts, squarePosition, sameGeometry, parseMoves, gameIdFromPath, shouldRequestAnalysis, classifyMoveTimeout, nextBackoffMs } = require('../lichess-autoplayer.user.js');
 
 test('rating slider settings are validated and old presets migrate', () => {
   assert.deepEqual(normalizeSettings({ time: 'bad', limit: -1, strength: 'bad' }), { time: '3+0', limit: '1', strength: 1500, autoAnalysis: true });
@@ -120,4 +120,18 @@ test('responsive search accounts for submission time and preserves the clock cap
   assert.deepEqual(responsiveBudget(180000, false, 300, 1200), { search: 50, delay: 0 });
   assert.deepEqual(responsiveBudget(2200, false, 5000, 1600), { search: 50, delay: 0 });
   assert.deepEqual(responsiveBudget(null, false, null, 1200), { search: 500, delay: 150 });
+});
+
+test('recovery helpers prevent duplicate moves and skip analysis on aborted games', () => {
+  assert.equal(shouldRequestAnalysis({ ended: true, ply: 0, result: '' }), false);
+  assert.equal(shouldRequestAnalysis({ ended: true, ply: 2, result: '1-0' }), false);
+  assert.equal(shouldRequestAnalysis({ ended: true, ply: 24, result: '1-0' }), true);
+  assert.equal(classifyMoveTimeout({ gameId: 'abcd1234', key: 'k1', retries: 0 }, { id: 'abcd1234', ended: false, key: 'k2', color: 'w', chess: { turn: () => 'b' } }), 'confirmed');
+  assert.equal(classifyMoveTimeout({ gameId: 'abcd1234', key: 'k1', retries: 0 }, { id: 'abcd1234', ended: true, key: 'k1' }), 'ended');
+  assert.equal(classifyMoveTimeout({ gameId: 'abcd1234', key: 'k1', retries: 0 }, { id: 'abcd1234', ended: false, key: 'k1', color: 'w', chess: { turn: () => 'w' } }), 'retry');
+  assert.equal(classifyMoveTimeout({ gameId: 'abcd1234', key: 'k1', retries: 2 }, { id: 'abcd1234', ended: false, key: 'k1', color: 'w', chess: { turn: () => 'w' } }), 'abort');
+  assert.equal(classifyMoveTimeout({ gameId: 'abcd1234', key: 'k1', retries: 0 }, { id: 'other999', ended: false, key: 'k1' }), 'stale');
+  assert.equal(nextBackoffMs(1, 350, 1500), 350);
+  assert.equal(nextBackoffMs(3, 350, 1500), 1400);
+  assert.equal(nextBackoffMs(5, 350, 1500), 1500);
 });

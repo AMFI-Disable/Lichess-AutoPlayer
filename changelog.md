@@ -12,6 +12,7 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ### Fixed
 
+- **Reliability & Error Recovery (`lichess-autoplayer.user.js`, `test/userscript.test.js`)**: added state-verified unconfirmed-move retries (`classifyMoveTimeout`, max 2 retries, preventing duplicate submissions), automatic Stockfish worker recovery (`recoverEngine` on search/drain timeout, dynamic search watchdog), aborted/short-game analysis bypass (`shouldRequestAnalysis`), `429`/5xx backoff handling so matchmaking resumes cleanly, and transient DOM move-parse tolerance (`parseFailures`).
 - **1+0 Bullet Time Management & Latency (`lichess-autoplayer.user.js`, `server/mouse-bridge.js`, `server/click-helper.swift`)**: added adaptive `1+0` bullet search budgeting (zero artificial delay, `MultiPV 1` in bullet/low-time, `650 ms` initial `submitMs` baseline), `MutationObserver`-driven instant turn detection with a `200 ms` fallback poll, cached `swiftc -O` compilation of `click-helper.swift` at bridge startup, and tighter `bullet`/`quick` pointer profiles.
 - Added the `stockfish` npm dependency (`^19.0.1`), updated `server/engine-bridge.js` and `test/engine-bridge.test.js` to resolve Stockfish across environment, local, Homebrew, and npm paths, and documented Engine Bridge setup in `readme.md`.
 
