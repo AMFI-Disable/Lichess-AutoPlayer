@@ -2,6 +2,8 @@
 
 # Lichess AutoPlayer - Automated Pairing & Chess Play
 
+[中文文档](readme.zh-cn.md) · [Contributing](contributing.md)
+
 **Browser Userscript Companion For Automated Pairing And Chess Engine Play**  
 *In-page userscript powered by Stockfish WebAssembly, automated quick-pairing, dynamic search budgets, and optional native mouse companion.*
 
@@ -49,7 +51,7 @@ Lichess AutoPlayer is a single userscript that experiments with automatic pairin
 
 ## Installation And Setup
 
-Current versions: userscript **2.7.5**, macOS companion **1.0.2**.
+The userscript header and the [package manifest](package.json) record the respective component versions.
 
 1. Install Tampermonkey or Violentmonkey.
 2. Open the [userscript source](https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js) and confirm installation in your userscript manager.
