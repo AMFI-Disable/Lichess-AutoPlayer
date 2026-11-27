@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AutoPlayer
 // @namespace    https://github.com/AMFI-Disable/Lichess-AutoPlayer
-// @version      2.7.7
+// @version      2.7.8
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
 // @icon         https://lichess.org/favicon.ico
@@ -9,6 +9,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
+// @grant        GM_getResourceText
+// @resource     apStockfish https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js
 // @connect      cdnjs.cloudflare.com
 // @connect      127.0.0.1
 // @connect      lichess.org
@@ -201,7 +203,7 @@
       panel.innerHTML = `<style>
         #ap-panel{position:fixed;right:1rem;bottom:1rem;z-index:10000;width:min(19rem,calc(100vw - 2rem));box-sizing:border-box;padding:1rem;background:var(--c-bg-box,#312e2b);color:var(--c-font,#bababa);border:1px solid var(--c-border,#494743);box-shadow:0 3px 12px #0006;font:14px system-ui,sans-serif}
         #ap-panel *{box-sizing:border-box}#ap-panel h2{font-size:1rem;margin:0 0 .7rem;color:var(--c-font-clear,#eee)}#ap-panel label{display:block;margin:.5rem 0 .2rem}#ap-panel select,#ap-panel button{width:100%;padding:.5rem;background:var(--c-bg-input,#262421);color:inherit;border:1px solid var(--c-border,#555)}#ap-panel button{margin-top:.8rem;background:#769656;color:white;cursor:pointer;font-weight:bold}#ap-panel button[data-active=true]{background:#a04438}#ap-status{margin:.7rem 0 0;font-size:.85rem}#ap-status.error{color:#e88}#ap-panel small{display:block;margin-top:.5rem;opacity:.8}#ap-panel details{margin-top:.5rem}#ap-panel summary{cursor:pointer}#ap-panel .secondary{background:var(--c-bg-input,#262421);color:inherit}#ap-panel .ap-history-row{padding:.3rem 0;border-top:1px solid var(--c-border,#555);font-size:.8rem}
-      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.7</small></h2>
+      </style><h2>AutoPlayer · Bot <small style="display:inline">v2.7.8</small></h2>
       <details id="ap-settings" open><summary>Controls</summary><label for="ap-time">Time control</label><select id="ap-time">${TIMES.map(x => `<option>${x}</option>`).join('')}</select>
       <label for="ap-limit">Games</label><select id="ap-limit"><option value="1">1 game</option><option value="5">5 games</option><option value="10">10 games</option><option value="infinite">Unlimited</option></select>
       <label for="ap-strength">Approximate strength: <output id="ap-strength-value"></output></label><input id="ap-strength" type="range" min="1000" max="3000" step="250" style="width:100%">
@@ -248,7 +250,14 @@
     }
     app.pending = null;
   }
+  function releaseEngineUrl() {
+    if (app.engineUrl) {
+      URL.revokeObjectURL(app.engineUrl);
+      app.engineUrl = null;
+    }
+  }
   function cleanupWorker() {
+    releaseEngineUrl();
     if (app.worker) { app.worker.terminate(); app.worker = null; }
     app.ready = false; app.draining = false;
   }
@@ -311,11 +320,21 @@
     if (!app.active || app.epoch !== epoch) return;
     try {
       app.stage = 'starting the engine worker';
-      const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
-      const worker = new Worker(url); URL.revokeObjectURL(url); app.worker = worker;
-      worker.onerror = event => stop(`Engine worker failed${event && event.message ? `: ${event.message}` : ' to start (the page may block workers or the engine download was invalid)'}. Press Start to retry.`, true);
-      worker.onmessage = event => engineMessage(String(event.data));
-      app.stage = 'waiting for the engine to answer the UCI handshake';
+      ui.status('Starting Stockfish worker…');
+      app.engineUrl = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+      const worker = new Worker(app.engineUrl);
+      app.worker = worker;
+      worker.onerror = event => {
+        if (app.worker === worker) stop(`Stockfish worker failed${event.message ? ': ' + event.message : ''}. Press Start to retry.`, true);
+      };
+      worker.onmessage = event => {
+        if (app.worker === worker) {
+          try { engineMessage(String(event.data)); }
+          catch (error) { stop(`Stockfish failed: ${error.message}. Press Start to retry.`, true); }
+        }
+      };
+      app.stage = 'waiting for Stockfish to answer';
+      ui.status('Waiting for Stockfish to answer…');
       worker.postMessage('uci');
     } catch (error) { stop(`Engine failed: ${error.message}`, true); }
   }
@@ -324,33 +343,47 @@
     app.stage = 'downloading the engine';
     clearTimeout(app.timeout);
     app.timeout = setTimeout(() => { if (app.active && !app.ready && app.epoch === epoch) stop(`Engine timed out while ${app.stage || 'starting'}. Check that cdnjs.cloudflare.com is reachable and that your userscript manager allows Web Workers on lichess.org, then press Start to retry.`, true); }, 20000);
+    if (!engineSourceCache && typeof GM_getResourceText === 'function') {
+      try {
+        engineSourceCache = patchEngineSource(GM_getResourceText('apStockfish'), ENGINE_URL);
+      } catch {
+        // Older installations and failed resource downloads can still fetch the engine directly.
+      }
+    }
     if (engineSourceCache) return bootEngineWorker(engineSourceCache, epoch);
-    GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js', timeout: 15000,
-      onprogress(event) {
-        if (!app.active || app.epoch !== epoch) return;
-        if (event.lengthComputable && event.total > 0) ui.status(`Desktop helper connected · downloading engine (${Math.min(99, Math.round((event.loaded / event.total) * 100))}%)…`);
-      },
-      onload(response) {
-        if (!app.active || app.epoch !== epoch) return;
-        if (response.status !== 200) return stop(`Engine download failed (HTTP ${response.status}) from ${ENGINE_URL}. Press Start to retry.`, true);
-        try {
-          engineSourceCache = patchEngineSource(response.responseText, ENGINE_URL);
-          bootEngineWorker(engineSourceCache, epoch);
-        } catch (error) { stop(`Engine failed: ${error.message}`, true); }
-      },
-      onerror() { if (app.active && app.epoch === epoch) stop(`Engine download failed: could not reach ${ENGINE_URL}. Check your connection and the userscript manager's network permissions, then press Start to retry.`, true); },
-      ontimeout() { if (app.active && app.epoch === epoch) stop('Engine download timed out. Press Start to retry.', true); },
-      onabort() { if (app.active && app.epoch === epoch) stop('Engine download aborted. Press Start to retry.', true); }
-    });
+    try {
+      GM_xmlhttpRequest({ method: 'GET', url: ENGINE_URL + 'stockfish.js', timeout: 15000,
+        onprogress(event) {
+          if (!app.active || app.epoch !== epoch) return;
+          if (event.lengthComputable && event.total > 0) ui.status(`Desktop helper connected · downloading engine (${Math.min(99, Math.round((event.loaded / event.total) * 100))}%)…`);
+        },
+        onload(response) {
+          if (!app.active || app.epoch !== epoch) return;
+          if (response.status !== 200) return stop(`Engine download failed (HTTP ${response.status}) from ${ENGINE_URL}. Press Start to retry.`, true);
+          try {
+            engineSourceCache = patchEngineSource(response.responseText, ENGINE_URL);
+            bootEngineWorker(engineSourceCache, epoch);
+          } catch (error) { stop(`Engine failed: ${error.message}`, true); }
+        },
+        onerror() { if (app.active && app.epoch === epoch) stop(`Engine download failed: could not reach ${ENGINE_URL}. Check your connection and the userscript manager's network permissions, then press Start to retry.`, true); },
+        ontimeout() { if (app.active && app.epoch === epoch) stop('Engine download timed out. Press Start to retry.', true); },
+        onabort() { if (app.active && app.epoch === epoch) stop('Engine download aborted. Press Start to retry.', true); }
+      });
+    } catch (error) {
+      stop(`Engine download could not start: ${error.message}. Press Start to retry.`, true);
+    }
   }
   function engineMessage(line) {
     if (!app.active) return;
     if (line.trim() === 'uciok' && !app.ready) {
+      app.stage = 'waiting for Stockfish readiness';
+      ui.status('Configuring Stockfish…');
       app.multiPv = 1;
       app.worker.postMessage(`setoption name Skill Level value ${skillFor(app.settings.strength)}`);
       app.worker.postMessage('setoption name MultiPV value 1');
       app.worker.postMessage('isready');
     } else if (line.trim() === 'readyok' && !app.ready) {
+      releaseEngineUrl();
       app.ready = true; clearTimeout(app.timeout); ui.status('Engine connected');
     } else if (line.startsWith('info ') && app.pending?.phase === 'search' && !app.draining) {
       const variation = parseVariation(line);

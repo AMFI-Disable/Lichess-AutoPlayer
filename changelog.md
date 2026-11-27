@@ -4,6 +4,13 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
+## [2.7.8] - Stockfish Startup
+
+- Load Stockfish from the userscript manager's installed resource when available and keep the download as a fallback.
+- Hold the worker source URL through the readiness handshake and show which stage is running or failed.
+
+---
+
 ## [Unreleased]
 
 ### Documentation

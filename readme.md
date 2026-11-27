@@ -10,7 +10,7 @@
 [![Website: Live](https://img.shields.io/badge/Website-Live-66BB6A.svg?style=flat-square)](https://amfi-disable.github.io/Lichess-AutoPlayer/)
 [![Browser: Chrome / Firefox / Safari](https://img.shields.io/badge/Browser-Chrome%20%7C%20Firefox%20%7C%20Safari-blue.svg?style=flat-square&logo=googlechrome)](https://google.com/chrome)
 [![Manager: Tampermonkey](https://img.shields.io/badge/Manager-Tampermonkey%20%7C%20Violentmonkey-orange.svg?style=flat-square&logo=tampermonkey)](https://tampermonkey.net)
-[![Engine: Stockfish](https://img.shields.io/badge/Engine-Stockfish%2016%20WASM-blue.svg?style=flat-square)](https://stockfishchess.org)
+[![Engine: Stockfish](https://img.shields.io/badge/Engine-Stockfish.js%2010.0.2-blue.svg?style=flat-square)](https://stockfishchess.org)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square)](license)
 [![Privacy: 100% Client-Side](https://img.shields.io/badge/Privacy-100%25%20Client--Side-purple.svg?style=flat-square)](#overview-and-core-value)
 
@@ -57,7 +57,7 @@ The userscript header and the [package manifest](package.json) record the respec
 2. Open the [userscript source](https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js) and confirm installation in your userscript manager.
 3. Open the Lichess lobby. Select a time control, number of games, and strength, then press **Start**. Press **Stop** to cancel pending automation.
 
-The script downloads chess.js and Stockfish from cdnjs. An internet connection and a browser/userscript manager that permits the worker and WebAssembly download are required. Engine errors are shown in the panel; press Start to retry. The separate Node engine bridge is not used by the userscript. The macOS mouse companion below handles native input.
+The userscript manager loads chess.js and Stockfish from cdnjs when installing or updating the script. If the installed Stockfish resource is unavailable, the script downloads it at startup. Stockfish runs in a browser worker. Engine errors are shown in the panel; press Start to retry. The separate Node engine bridge is not used by the userscript. The macOS mouse companion below handles native input.
 
 ---
 
