@@ -4,24 +4,17 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 
 ---
 
-## [2.7.8] - Stockfish Startup
-
-- Load Stockfish from the userscript manager's installed resource when available and keep the download as a fallback.
-- Hold the worker source URL through the readiness handshake and show which stage is running or failed.
-
----
-
 ## [Unreleased]
+
+### Changed
+
+- Added `@updateURL` and `@downloadURL` metadata headers to `lichess-autoplayer.user.js` and aligned `package.json` version to `2.7.8`.
+- **Adaptive Time Management & Modular Refactor (`2.7.6` / `package.json` `1.0.3`)**: replaced artificial move-submission delays and `MultiPV 3` variation randomization with `adaptiveBudget()` (`gamePhaseFactor`, `complexityFactor`, `opponentMs`, and remaining clock reserve), centralized `cleanupWorker()` lifecycle helpers, and bumped patch versions (`2.7.6` userscript, `1.0.3` package).
+- Standardized `.gitignore` to the two-section whitelist and artifact ignore template while preserving Stockfish engine and local checkout exclusions.
 
 ### Documentation
 
 - Added Simplified Chinese project and contribution guides and bilingual feedback templates.
-
-
-### Changed
-
-- **Adaptive Time Management & Modular Refactor (`2.7.6` / `package.json` `1.0.3`)**: replaced artificial move-submission delays and `MultiPV 3` variation randomization with `adaptiveBudget()` (`gamePhaseFactor`, `complexityFactor`, `opponentMs`, and remaining clock reserve), centralized `cleanupWorker()` lifecycle helpers, and bumped patch versions (`2.7.6` userscript, `1.0.3` package).
-- Standardized `.gitignore` to the two-section whitelist and artifact ignore template while preserving Stockfish engine and local checkout exclusions.
 
 ### Fixed
 
@@ -30,6 +23,13 @@ All notable changes, engine updates, and feature history for Lichess AutoPlayer 
 - **Reliability & Error Recovery (`lichess-autoplayer.user.js`, `test/userscript.test.js`)**: added state-verified unconfirmed-move retries (`classifyMoveTimeout`, max 2 retries, preventing duplicate submissions), automatic Stockfish worker recovery (`recoverEngine` on search/drain timeout, dynamic search watchdog), aborted/short-game analysis bypass (`shouldRequestAnalysis`), `429`/5xx backoff handling so matchmaking resumes cleanly, and transient DOM move-parse tolerance (`parseFailures`).
 - **1+0 Bullet Time Management & Latency (`lichess-autoplayer.user.js`, `server/mouse-bridge.js`, `server/click-helper.swift`)**: added adaptive `1+0` bullet search budgeting (zero artificial delay, `MultiPV 1` in bullet/low-time, `650 ms` initial `submitMs` baseline), `MutationObserver`-driven instant turn detection with a `200 ms` fallback poll, cached `swiftc -O` compilation of `click-helper.swift` at bridge startup, and tighter `bullet`/`quick` pointer profiles.
 - Added the `stockfish` npm dependency (`^19.0.1`), updated `server/engine-bridge.js` and `test/engine-bridge.test.js` to resolve Stockfish across environment, local, Homebrew, and npm paths, and documented Engine Bridge setup in `readme.md`.
+
+---
+
+## [2.7.8] - Stockfish Startup
+
+- Load Stockfish from the userscript manager's installed resource when available and keep the download as a fallback.
+- Hold the worker source URL through the readiness handshake and show which stage is running or failed.
 
 ---
 
