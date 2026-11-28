@@ -4,6 +4,8 @@
 // @version      2.7.8
 // @description  Configurable chess automation for bot testing
 // @author       AMFI-Disable
+// @updateURL    https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js
+// @downloadURL  https://raw.githubusercontent.com/AMFI-Disable/Lichess-AutoPlayer/main/lichess-autoplayer.user.js
 // @icon         https://lichess.org/favicon.ico
 // @match        https://lichess.org/*
 // @grant        GM_setValue
